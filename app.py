@@ -39,7 +39,12 @@ if database_url:
     # Fix for render.com: convert postgres:// to postgresql://
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
+
+    # Force psycopg2 driver on Render to avoid missing 'psycopg' module
+    # SQLAlchemy 2.x may default to 'psycopg' if available; ensure psycopg2 instead
+    if database_url.startswith('postgresql://') and '+psycopg2' not in database_url and '+psycopg' not in database_url:
+        database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
     # Development: Use SQLite
