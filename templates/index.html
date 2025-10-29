@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plants Hub - Product Management</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <style>
+        /* Navbar brand styles */
+        .navbar { border-bottom: 1px solid rgba(0, 212, 255, 0.18); }
+        .brand-logo {
+            height: 40px;
+            width: 40px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            border: 2px solid #00d4ff;           /* crisp cyan ring */
+            outline: 2px solid rgba(0, 212, 255, 0.25); /* soft outer ring, non-blurry */
+            outline-offset: 2px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);     /* subtle drop shadow only */
+            transition: transform 150ms ease, box-shadow 150ms ease;
+            padding: 2px;
+            object-fit: cover;
+            image-rendering: -webkit-optimize-contrast; /* improve contrast on WebKit */
+            image-rendering: crisp-edges;               /* hint to keep edges sharp */
+            backface-visibility: hidden;                /* avoid subpixel blurring */
+        }
+        .navbar-brand:hover .brand-logo { 
+            transform: translateY(-1px) scale(1.02);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .navbar-brand .brand-text { font-weight: 600; letter-spacing: 0.2px; }
+        .product-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+        }
+        .product-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+        .product-image {
+            height: 250px;
+            object-fit: cover;
+            background-color: #f8f9fa;
+        }
+        .price-tag {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .search-section {
+            background: linear-gradient(135deg, #00d4ff 0%, #00b894 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        .stats-badge {
+            background-color: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+        }
+        /* Autocomplete styles */
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1050;
+            background: #ffffff;
+            border: 2px solid #00d4ff;
+            border-radius: 0.5rem;
+            max-height: 280px;
+            overflow-y: auto;
+            box-shadow: 0 8px 20px rgba(0, 212, 255, 0.2);
+            display: none;
+            opacity: 0;
+            transform: translateY(-6px);
+            transition: opacity 120ms ease, transform 120ms ease;
+            margin-top: 0.25rem;
+        }
+        .autocomplete-list.show {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .autocomplete-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #2d3748;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        .autocomplete-item:last-child { border-bottom: 0; }
+        .autocomplete-item:hover,
+        .autocomplete-item.active {
+            background: linear-gradient(135deg, #00d4ff 0%, #00b894 100%);
+            color: #ffffff;
+        }
+        .autocomplete-item .highlight { 
+            font-weight: 700; 
+            color: #00b894;
+        }
+        .autocomplete-item:hover .highlight,
+        .autocomplete-item.active .highlight {
+            color: #ffffff;
+            text-decoration: underline;
+        }        /* Auto-close alert styling */
+        .auto-close-alert {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInDown 0.4s ease-out;
+        }
+        
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeOutUp {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+        }
+        
+        .alert-closing {
+            animation: fadeOutUp 0.4s ease-out;
+        }
+        
+        .alert-progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(90deg, 
+                rgba(255,255,255,0.3) 0%, 
+                rgba(255,255,255,0.7) 50%, 
+                rgba(255,255,255,0.3) 100%);
+            width: 100%;
+            animation: progressBar 5s linear;
+        }
+        
+        @keyframes progressBar {
+            from {
+                width: 100%;
+            }
+            to {
+                width: 0%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Plants Hub Logo" class="me-2 brand-logo">
+                <span class="brand-text">The Plants Hub</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">
+                            <i class="bi bi-grid"></i> All Products
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/add">
+                            <i class="bi bi-plus-circle"></i> Add Product
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Search Section -->
+    <div class="search-section">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-8 mx-auto">
+                    <h2 class="text-center mb-4">
+                        <i class="bi bi-search"></i> Find Your Perfect Plant Product
+                    </h2>
+                    
+                    <form method="GET" action="/" class="bg-white p-4 rounded shadow" id="searchForm">
+                        <div class="row g-3">
+                            <!-- Search Bar -->
+                            <div class="col-md-12">
+                                <div class="input-group position-relative" id="searchInputGroup">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                     <input type="text" 
+                                           class="form-control form-control-lg" 
+                         name="search" id="searchInput"
+                                           placeholder="Search by name or description..." 
+                                           value="{{ search_query }}"
+                                           autocomplete="off">
+                                    <!-- Suggestions dropdown -->
+                                    <div id="searchSuggestions" class="autocomplete-list" role="listbox" aria-label="Search suggestions"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Category Filter -->
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-funnel"></i> Category
+                                </label>
+                                <select class="form-select form-select-lg" name="category">
+                                    <option value="all" {% if not category_filter or category_filter == 'all' %}selected{% endif %}>
+                                        All Products
+                                    </option>
+                                    <option value="ceramic_pot" {% if category_filter == 'ceramic_pot' %}selected{% endif %}>
+                                        🏺 Ceramic Pots
+                                    </option>
+                                    <option value="plastic_pot" {% if category_filter == 'plastic_pot' %}selected{% endif %}>
+                                        🪴 Plastic Pots
+                                    </option>
+                                    <option value="terracotta_pot" {% if category_filter == 'terracotta_pot' %}selected{% endif %}>
+                                        🏺 Terracotta/Soil Pots
+                                    </option>
+                                    <option value="fiber_pot" {% if category_filter == 'fiber_pot' %}selected{% endif %}>
+                                        🌾 Fiber Pots
+                                    </option>
+                                    <option value="indoor_plant" {% if category_filter == 'indoor_plant' %}selected{% endif %}>
+                                        🏠 Indoor Plants
+                                    </option>
+                                    <option value="outdoor_plant" {% if category_filter == 'outdoor_plant' %}selected{% endif %}>
+                                        🌳 Outdoor Plants
+                                    </option>
+                                    <option value="colorful_pot" {% if category_filter == 'colorful_pot' %}selected{% endif %}>
+                                        🎨 Colorful Pots
+                                    </option>
+                                </select>
+                            </div>
+                            
+                            <!-- Price Range Filters -->
+                            <div class="col-md-5">
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-currency-rupee"></i> Min
+                                    </span>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="min_price" 
+                                           placeholder="Min Price" 
+                                           value="{{ min_price }}"
+                                           min="0"
+                                           step="1">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-5">
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-currency-rupee"></i> Max
+                                    </span>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="max_price" 
+                                           placeholder="Max Price" 
+                                           value="{{ max_price }}"
+                                           min="0"
+                                           step="1">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {% if search_query or min_price or max_price or (category_filter and category_filter != 'all') %}
+                        <div class="text-center mt-3">
+                            <a href="/" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-x-circle"></i> Clear Filters
+                            </a>
+                        </div>
+                        {% endif %}
+                    </form>
+                    
+                    <div class="text-center mt-3">
+                        <span class="stats-badge">
+                            <i class="bi bi-box-seam"></i> {{ total_count }} Products Found
+                        </span>
+                        {% if category_filter and category_filter != 'all' %}
+                        <span class="stats-badge ms-2">
+                            <i class="bi bi-tag"></i> {{ category_names.get(category_filter, 'Category') }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Category Filters -->
+    <div class="container mt-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-center">
+            <a href="/?category=all" 
+               class="btn btn-sm {% if not category_filter or category_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                <i class="bi bi-grid"></i> All
+            </a>
+            <a href="/?category=ceramic_pot" 
+               class="btn btn-sm {% if category_filter == 'ceramic_pot' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🏺 Ceramic
+            </a>
+            <a href="/?category=plastic_pot" 
+               class="btn btn-sm {% if category_filter == 'plastic_pot' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🪴 Plastic
+            </a>
+            <a href="/?category=terracotta_pot" 
+               class="btn btn-sm {% if category_filter == 'terracotta_pot' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🏺 Terracotta
+            </a>
+            <a href="/?category=fiber_pot" 
+               class="btn btn-sm {% if category_filter == 'fiber_pot' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🌾 Fiber
+            </a>
+            <a href="/?category=indoor_plant" 
+               class="btn btn-sm {% if category_filter == 'indoor_plant' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🏠 Indoor
+            </a>
+            <a href="/?category=outdoor_plant" 
+               class="btn btn-sm {% if category_filter == 'outdoor_plant' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🌳 Outdoor
+            </a>
+            <a href="/?category=colorful_pot" 
+               class="btn btn-sm {% if category_filter == 'colorful_pot' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🎨 Colorful
+            </a>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show position-relative overflow-hidden auto-close-alert" role="alert" style="border-left: 4px solid {% if category == 'success' %}#28a745{% elif category == 'danger' %}#dc3545{% else %}#17a2b8{% endif %};">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3" style="font-size: 1.5rem;">
+                            {% if category == 'success' %}
+                                <i class="bi bi-check-circle-fill text-success"></i>
+                            {% elif category == 'danger' %}
+                                <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                            {% else %}
+                                <i class="bi bi-info-circle-fill text-info"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-grow-1">
+                            <strong>{{ message }}</strong>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <!-- Progress bar for auto-close -->
+                    <div class="alert-progress-bar"></div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Products Grid -->
+    <div class="container mb-5">
+        {% if products %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-4">
+            {% for product in products %}
+            <div class="col">
+                <div class="card product-card">
+                    <!-- Product Image -->
+                    {% if product.Image_File %}
+                    <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
+                         class="card-img-top product-image" 
+                         alt="{{ product.Product_Name }}"
+                         onerror="this.src='{{ url_for('static', filename='images/placeholder.jpg') }}'">
+                    {% else %}
+                    <div class="card-img-top product-image d-flex align-items-center justify-content-center bg-light">
+                        <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="card-body">
+                        <h5 class="card-title">{{ product.Product_Name }}</h5>
+                        
+                        <!-- Category Badge -->
+                        {% if product.Category %}
+                        <div class="mb-2">
+                            {% if product.Category == 'ceramic_pot' %}
+                                <span class="badge bg-info">🏺 Ceramic</span>
+                            {% elif product.Category == 'plastic_pot' %}
+                                <span class="badge bg-primary">🪴 Plastic</span>
+                            {% elif product.Category == 'terracotta_pot' %}
+                                <span class="badge bg-warning">🏺 Terracotta</span>
+                            {% elif product.Category == 'fiber_pot' %}
+                                <span class="badge bg-success">🌾 Fiber</span>
+                            {% elif product.Category == 'indoor_plant' %}
+                                <span class="badge bg-secondary">🏠 Indoor</span>
+                            {% elif product.Category == 'outdoor_plant' %}
+                                <span class="badge bg-dark">🌳 Outdoor</span>
+                            {% elif product.Category == 'colorful_pot' %}
+                                <span class="badge bg-danger">🎨 Colorful</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">📦 Other</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <p class="card-text text-muted small">
+                            <i class="bi bi-info-circle"></i> {{ product.Description or 'No description' }}
+                        </p>
+                        <div class="price-tag mb-3">
+                            <i class="bi bi-currency-rupee"></i>{{ "%.2f"|format(product.Price) }}
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="btn-group w-100" role="group">
+                            <a href="/edit/{{ product.index }}" class="btn btn-outline-primary">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                            <button type="button" 
+                                    class="btn btn-outline-danger" 
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#deleteModal{{ product.index }}">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Delete Confirmation Modal -->
+            <div class="modal fade" id="deleteModal{{ product.index }}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Confirm Delete</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            Are you sure you want to delete <strong>{{ product.Product_Name }}</strong>?
+                            <br><small class="text-muted">This action cannot be undone.</small>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <form method="POST" action="/delete/{{ product.index }}" style="display: inline;">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-5">
+            <i class="bi bi-inbox" style="font-size: 5rem; color: #ccc;"></i>
+            <h3 class="mt-3 text-muted">No Products Found</h3>
+            <p class="text-muted">
+                {% if search_query or min_price or max_price or (category_filter and category_filter != 'all') %}
+                    Try adjusting your search filters or <a href="/">view all products</a>.
+                {% else %}
+                    Start by <a href="/add">adding your first product</a>!
+                {% endif %}
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="bi bi-flower1"></i> Plants Hub - Product Management System
+                <br>
+                <small class="text-muted">Manage your plant and pot inventory with ease</small>
+            </p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Auto-close alerts script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all auto-close alerts
+            const alerts = document.querySelectorAll('.auto-close-alert');
+            
+            alerts.forEach(function(alert) {
+                // Auto-close after 5 seconds
+                setTimeout(function() {
+                    // Add closing animation class
+                    alert.classList.add('alert-closing');
+                    
+                    // Wait for animation to complete, then remove the alert
+                    setTimeout(function() {
+                        // Use Bootstrap's alert close method
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }, 400); // Match the animation duration
+                }, 5000); // 5 seconds delay
+                
+                // Pause auto-close on hover (professional UX)
+                let autoCloseTimeout;
+                let animationTimeout;
+                
+                alert.addEventListener('mouseenter', function() {
+                    // Stop the progress bar animation
+                    const progressBar = alert.querySelector('.alert-progress-bar');
+                    if (progressBar) {
+                        progressBar.style.animationPlayState = 'paused';
+                    }
+                });
+                
+                alert.addEventListener('mouseleave', function() {
+                    // Resume the progress bar animation
+                    const progressBar = alert.querySelector('.alert-progress-bar');
+                    if (progressBar) {
+                        progressBar.style.animationPlayState = 'running';
+                    }
+                });
+            });
+        });
+    </script>
+    
+        <!-- Professional Autocomplete Script -->
+        <script>
+            (function() {
+                const suggestions = {{ suggestions|tojson|safe }};
+                const input = document.getElementById('searchInput');
+                const list = document.getElementById('searchSuggestions');
+                const form = document.getElementById('searchForm');
+
+                if (!input || !list) return;
+
+                let activeIndex = -1;
+                let currentItems = [];
+
+                function normalize(s) { return (s || '').toString(); }
+
+                function filterSuggestions(query) {
+                    const q = query.trim().toLowerCase();
+                    if (!q) return [];
+                    const starts = [];
+                    const contains = [];
+                    for (const name of suggestions) {
+                        const n = name.toLowerCase();
+                        if (n.startsWith(q)) starts.push(name);
+                        else if (n.includes(q)) contains.push(name);
+                    }
+                    return [...starts, ...contains].slice(0, 10);
+                }
+
+                function highlight(text, query) {
+                    const q = query.trim();
+                    if (!q) return text;
+                    const i = text.toLowerCase().indexOf(q.toLowerCase());
+                    if (i === -1) return text;
+                    const before = text.slice(0, i);
+                    const match = text.slice(i, i + q.length);
+                    const after = text.slice(i + q.length);
+                    return `${before}<span class="highlight">${match}</span>${after}`;
+                }
+
+                function render(items, query) {
+                    list.innerHTML = '';
+                    activeIndex = -1;
+                    currentItems = items;
+                    if (!items.length) {
+                        list.classList.remove('show');
+                        return;
+                    }
+                    const frag = document.createDocumentFragment();
+                    items.forEach((name, idx) => {
+                        const div = document.createElement('div');
+                        div.className = 'autocomplete-item';
+                        div.setAttribute('role', 'option');
+                        div.setAttribute('aria-selected', 'false');
+                        div.innerHTML = highlight(name, query);
+                        div.addEventListener('mousedown', (e) => {
+                            e.preventDefault();
+                            choose(idx);
+                        });
+                        frag.appendChild(div);
+                    });
+                    list.appendChild(frag);
+                    list.classList.add('show');
+                }
+
+                function choose(index) {
+                    const val = normalize(currentItems[index]);
+                    input.value = val;
+                    hide();
+                    if (form) form.submit();
+                }
+
+                function hide() {
+                    list.classList.remove('show');
+                    activeIndex = -1;
+                    currentItems = [];
+                }
+
+                input.addEventListener('input', () => {
+                    const items = filterSuggestions(input.value);
+                    render(items, input.value);
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (!list.classList.contains('show')) return;
+                    const max = currentItems.length - 1;
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        activeIndex = Math.min(max, activeIndex + 1);
+                        updateActive();
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        activeIndex = Math.max(0, activeIndex - 1);
+                        updateActive();
+                    } else if (e.key === 'Enter') {
+                        if (activeIndex >= 0) {
+                            e.preventDefault();
+                            choose(activeIndex);
+                        }
+                    } else if (e.key === 'Escape') {
+                        hide();
+                    }
+                });
+
+                function updateActive() {
+                    const children = Array.from(list.children);
+                    children.forEach((el, i) => {
+                        if (i === activeIndex) {
+                            el.classList.add('active');
+                            el.setAttribute('aria-selected', 'true');
+                            el.scrollIntoView({ block: 'nearest' });
+                        } else {
+                            el.classList.remove('active');
+                            el.setAttribute('aria-selected', 'false');
+                        }
+                    });
+                }
+
+                document.addEventListener('click', (e) => {
+                    if (!list.contains(e.target) && e.target !== input) hide();
+                });
+            })();
+        </script>
+</body>
+</html>

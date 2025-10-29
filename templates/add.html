@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Product - Plants Hub</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <style>
+        /* Navbar brand styles */
+        .navbar { border-bottom: 1px solid rgba(0, 212, 255, 0.18); }
+        .brand-logo {
+            height: 40px;
+            width: 40px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            border: 2px solid #00d4ff;
+            outline: 2px solid rgba(0, 212, 255, 0.25);
+            outline-offset: 2px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            transition: transform 150ms ease, box-shadow 150ms ease;
+            padding: 2px;
+            object-fit: cover;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            backface-visibility: hidden;
+        }
+        .navbar-brand:hover .brand-logo { 
+            transform: translateY(-1px) scale(1.02);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .navbar-brand .brand-text { font-weight: 600; letter-spacing: 0.2px; }
+        .page-header {
+            background: linear-gradient(135deg, #00d4ff 0%, #00b894 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        .form-card {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .preview-container {
+            border: 2px dashed #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            background-color: #f8f9fa;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 0.5rem;
+        }
+        .upload-icon {
+            font-size: 4rem;
+            color: #6c757d;
+        }
+        
+        /* Auto-close alert styling */
+        .auto-close-alert {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInDown 0.4s ease-out;
+        }
+        
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeOutUp {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+        }
+        
+        .alert-closing {
+            animation: fadeOutUp 0.4s ease-out;
+        }
+        
+        .alert-progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(90deg, 
+                rgba(255,255,255,0.3) 0%, 
+                rgba(255,255,255,0.7) 50%, 
+                rgba(255,255,255,0.3) 100%);
+            width: 100%;
+            animation: progressBar 5s linear;
+        }
+        
+        @keyframes progressBar {
+            from {
+                width: 100%;
+            }
+            to {
+                width: 0%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Plants Hub Logo" class="me-2 brand-logo">
+                <span class="brand-text">The Plants Hub</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-grid"></i> All Products
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/add">
+                            <i class="bi bi-plus-circle"></i> Add Product
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container">
+            <h1 class="text-center">
+                <i class="bi bi-plus-circle"></i> Add New Product
+            </h1>
+            <p class="text-center mb-0">Fill in the details to add a new plant or pot product</p>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show position-relative overflow-hidden auto-close-alert" role="alert" style="border-left: 4px solid {% if category == 'success' %}#28a745{% elif category == 'danger' %}#dc3545{% else %}#17a2b8{% endif %};">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0 me-3" style="font-size: 1.5rem;">
+                            {% if category == 'success' %}
+                                <i class="bi bi-check-circle-fill text-success"></i>
+                            {% elif category == 'danger' %}
+                                <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                            {% else %}
+                                <i class="bi bi-info-circle-fill text-info"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-grow-1">
+                            <strong>{{ message }}</strong>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <!-- Progress bar for auto-close -->
+                    <div class="alert-progress-bar"></div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Add Product Form -->
+    <div class="container mb-5">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="card form-card">
+                    <div class="card-body p-4">
+                        <form method="POST" enctype="multipart/form-data" id="addProductForm">
+                            
+                            <!-- Product Name -->
+                            <div class="mb-4">
+                                <label for="product_name" class="form-label fw-bold">
+                                    <i class="bi bi-tag"></i> Product Name *
+                                </label>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       id="product_name" 
+                                       name="product_name" 
+                                       placeholder="e.g., Ceramic White Pot"
+                                       required>
+                                <div class="form-text">Enter a descriptive name for your product</div>
+                            </div>
+
+                            <!-- Price -->
+                            <div class="mb-4">
+                                <label for="price" class="form-label fw-bold">
+                                    <i class="bi bi-currency-rupee"></i> Price *
+                                </label>
+                                <div class="input-group input-group-lg">
+                                    <span class="input-group-text">₹</span>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           id="price" 
+                                           name="price" 
+                                           placeholder="0.00"
+                                           min="0"
+                                           step="0.01"
+                                           required>
+                                </div>
+                                <div class="form-text">Enter the product price in rupees</div>
+                            </div>
+
+                            <!-- Category -->
+                            <div class="mb-4">
+                                <label for="category" class="form-label fw-bold">
+                                    <i class="bi bi-tags"></i> Category *
+                                </label>
+                                <select class="form-select form-select-lg" id="category" name="category" required>
+                                    <option value="">-- Select Category --</option>
+                                    <option value="ceramic_pot">🏺 Ceramic Pot</option>
+                                    <option value="plastic_pot">🪴 Plastic Pot</option>
+                                    <option value="terracotta_pot">🏺 Terracotta/Soil Pot</option>
+                                    <option value="fiber_pot">🌾 Fiber Pot</option>
+                                    <option value="indoor_plant">🏠 Indoor Plant</option>
+                                    <option value="outdoor_plant">🌳 Outdoor Plant</option>
+                                    <option value="colorful_pot">🎨 Colorful Pot</option>
+                                    <option value="other">📦 Other</option>
+                                </select>
+                                <div class="form-text">Select the product category</div>
+                            </div>
+
+                            <!-- Description -->
+                            <div class="mb-4">
+                                <label for="description" class="form-label fw-bold">
+                                    <i class="bi bi-info-circle"></i> Description
+                                </label>
+                                <textarea class="form-control" 
+                                          id="description" 
+                                          name="description" 
+                                          rows="4"
+                                          placeholder="e.g., 15 inch, quantity: 10, ceramic material, suitable for indoor plants..."></textarea>
+                                <div class="form-text">Add size, material, quantity, or other relevant details</div>
+                            </div>
+
+                            <!-- Image Upload -->
+                            <div class="mb-4">
+                                <label for="image" class="form-label fw-bold">
+                                    <i class="bi bi-image"></i> Product Image
+                                </label>
+                                <div class="input-group mb-2">
+                                    <input type="file" 
+                                           class="form-control" 
+                                           id="image" 
+                                           name="image" 
+                                           accept="image/png, image/jpeg, image/jpg, image/gif"
+                                           onchange="previewImage(event)">
+                                    <button class="btn btn-outline-primary" type="button" id="cameraButton" onclick="openCamera()">
+                                        <i class="bi bi-camera"></i> Camera
+                                    </button>
+                                </div>
+                                <div class="form-text">
+                                    <i class="bi bi-cloud-upload"></i> Upload from device or 
+                                    <i class="bi bi-camera-fill"></i> capture with camera (PNG, JPG, JPEG, GIF - Max 16MB)
+                                </div>
+                            </div>
+                            
+                            <!-- Camera Modal -->
+                            <div class="modal fade" id="cameraModal" tabindex="-1" aria-labelledby="cameraModalLabel" aria-hidden="true">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="cameraModalLabel">
+                                                <i class="bi bi-camera-video"></i> Capture Product Image
+                                            </h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="camera-container text-center">
+                                                <video id="cameraVideo" autoplay playsinline class="w-100 rounded" style="max-height: 500px; background: #000;"></video>
+                                                <canvas id="cameraCanvas" style="display: none;"></canvas>
+                                                <div id="cameraError" class="alert alert-danger mt-3" style="display: none;">
+                                                    <i class="bi bi-exclamation-triangle"></i> <span id="cameraErrorMessage"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                                <i class="bi bi-x-circle"></i> Cancel
+                                            </button>
+                                            <button type="button" class="btn btn-primary" id="captureButton" onclick="captureImage()">
+                                                <i class="bi bi-camera"></i> Capture Photo
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Image Preview -->
+                            <div class="mb-4">
+                                <div class="preview-container" id="imagePreview">
+                                    <div class="text-center">
+                                        <i class="bi bi-image upload-icon"></i>
+                                        <p class="text-muted mt-2">Image preview will appear here</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Form Actions -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="/" class="btn btn-outline-secondary btn-lg">
+                                    <i class="bi bi-x-circle"></i> Cancel
+                                </a>
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-plus-circle"></i> Add Product
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Help Text -->
+                <div class="alert alert-info mt-4">
+                    <i class="bi bi-lightbulb"></i> <strong>Tips:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Select the appropriate category to help customers find your product easily</li>
+                        <li>Use clear, high-quality images for better presentation</li>
+                        <li>Include size information in the description (e.g., "15 inch", "12 inch")</li>
+                        <li>Add material type for pots (ceramic, plastic, terracotta, fiber)</li>
+                        <li>Mention quantity if selling in bulk</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="bi bi-flower1"></i> Plants Hub - Product Management System
+            </p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Auto-close alerts script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all auto-close alerts
+            const alerts = document.querySelectorAll('.auto-close-alert');
+            
+            alerts.forEach(function(alert) {
+                // Auto-close after 5 seconds
+                setTimeout(function() {
+                    // Add closing animation class
+                    alert.classList.add('alert-closing');
+                    
+                    // Wait for animation to complete, then remove the alert
+                    setTimeout(function() {
+                        // Use Bootstrap's alert close method
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }, 400); // Match the animation duration
+                }, 5000); // 5 seconds delay
+                
+                // Pause auto-close on hover (professional UX)
+                let autoCloseTimeout;
+                let animationTimeout;
+                
+                alert.addEventListener('mouseenter', function() {
+                    // Stop the progress bar animation
+                    const progressBar = alert.querySelector('.alert-progress-bar');
+                    if (progressBar) {
+                        progressBar.style.animationPlayState = 'paused';
+                    }
+                });
+                
+                alert.addEventListener('mouseleave', function() {
+                    // Resume the progress bar animation
+                    const progressBar = alert.querySelector('.alert-progress-bar');
+                    if (progressBar) {
+                        progressBar.style.animationPlayState = 'running';
+                    }
+                });
+            });
+        });
+    </script>
+    
+    <!-- Image Preview Script -->
+    <script>
+        let cameraStream = null;
+        
+        function previewImage(event) {
+            const file = event.target.files[0];
+            const preview = document.getElementById('imagePreview');
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.innerHTML = `<img src="${e.target.result}" class="preview-image" alt="Preview">`;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.innerHTML = `
+                    <div class="text-center">
+                        <i class="bi bi-image upload-icon"></i>
+                        <p class="text-muted mt-2">Image preview will appear here</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Camera functionality
+        function openCamera() {
+            const cameraModal = new bootstrap.Modal(document.getElementById('cameraModal'));
+            const video = document.getElementById('cameraVideo');
+            const errorDiv = document.getElementById('cameraError');
+            const errorMessage = document.getElementById('cameraErrorMessage');
+            
+            // Hide any previous errors
+            errorDiv.style.display = 'none';
+            
+            // Request camera access
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment', // Prefer back camera on mobile
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                } 
+            })
+            .then(function(stream) {
+                cameraStream = stream;
+                video.srcObject = stream;
+                cameraModal.show();
+            })
+            .catch(function(error) {
+                console.error('Camera error:', error);
+                errorMessage.textContent = 'Unable to access camera. Please check permissions or try uploading an image instead.';
+                errorDiv.style.display = 'block';
+                
+                // Still show modal to display error
+                cameraModal.show();
+            });
+            
+            // Stop camera when modal is closed
+            document.getElementById('cameraModal').addEventListener('hidden.bs.modal', function() {
+                stopCamera();
+            });
+        }
+        
+        function captureImage() {
+            const video = document.getElementById('cameraVideo');
+            const canvas = document.getElementById('cameraCanvas');
+            const context = canvas.getContext('2d');
+            const preview = document.getElementById('imagePreview');
+            
+            // Set canvas dimensions to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw video frame to canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Convert canvas to blob and create file
+            canvas.toBlob(function(blob) {
+                // Create a file from the blob
+                const timestamp = new Date().getTime();
+                const file = new File([blob], `camera-capture-${timestamp}.jpg`, { type: 'image/jpeg' });
+                
+                // Create a DataTransfer object to set the file input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                document.getElementById('image').files = dataTransfer.files;
+                
+                // Preview the captured image
+                const imageUrl = canvas.toDataURL('image/jpeg');
+                preview.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="Captured Image">`;
+                
+                // Close modal and stop camera
+                const cameraModal = bootstrap.Modal.getInstance(document.getElementById('cameraModal'));
+                cameraModal.hide();
+                stopCamera();
+            }, 'image/jpeg', 0.9); // 90% quality
+        }
+        
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+        }
+    </script>
+</body>
+</html>
