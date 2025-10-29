@@ -30,6 +30,10 @@ def migrate_sqlite_to_postgres(sqlite_path='plants.db', postgres_url=None):
     if postgres_url.startswith('postgres://'):
         postgres_url = postgres_url.replace('postgres://', 'postgresql://', 1)
     
+    # Use psycopg (version 3) driver explicitly for SQLAlchemy
+    if postgres_url.startswith('postgresql://') and '+' not in postgres_url:
+        postgres_url = postgres_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    
     # Check if SQLite file exists
     if not os.path.exists(sqlite_path):
         print(f"❌ ERROR: SQLite database '{sqlite_path}' not found!")
