@@ -3,17 +3,14 @@ Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Werkzeug==3.0.1
 
-# Database drivers
-# For Render (Linux): use psycopg2-binary
-# For Windows dev: use psycopg[binary]
-psycopg2-binary==2.9.9; platform_system != "Windows"
-psycopg[binary]==3.2.12; platform_system == "Windows"
+# Database drivers - psycopg2-binary for PostgreSQL
+psycopg2-binary==2.9.9
 
-# Production server (Linux only)
-gunicorn==21.2.0; platform_system != "Windows"
+# Production server
+gunicorn==21.2.0
 
 # Environment variables
 python-dotenv==1.0.0
 
-# Database ORM (updated for Python 3.13 compatibility)
+# Database ORM
 SQLAlchemy==2.0.44

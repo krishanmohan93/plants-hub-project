@@ -40,10 +40,6 @@ if database_url:
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     
-    # Use psycopg (version 3) driver explicitly for SQLAlchemy
-    if database_url.startswith('postgresql://') and '+' not in database_url:
-        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
-    
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 else:
     # Development: Use SQLite
