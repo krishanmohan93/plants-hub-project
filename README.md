@@ -227,7 +227,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 👤 Author
 
-Created with ❤️ by [Your Name]
+Created with ❤️ by Krishanmohan Kumar
 
 ---
 
@@ -244,8 +244,7 @@ Created with ❤️ by [Your Name]
 
 For issues, questions, or suggestions:
 - Open an issue on GitHub
-- Contact: your-email@example.com
-
+- Contact: your-krishanmohankumar9311@gmail.com
 ---
 
 **Happy Planting! 🌱**
