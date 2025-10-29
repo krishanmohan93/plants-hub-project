@@ -244,7 +244,7 @@ Created with ❤️ by Krishanmohan Kumar
 
 For issues, questions, or suggestions:
 - Open an issue on GitHub
-- Contact: your-krishanmohankumar9311@gmail.com
+- Contact:krishanmohankumar9311@gmail.com
 ---
 
 **Happy Planting! 🌱**
