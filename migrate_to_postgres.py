@@ -9,11 +9,30 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
+# Fix Windows UTF-8 encoding for emoji support
+if sys.platform == 'win32':
+    # Set UTF-8 encoding for stdout/stderr
+    import io
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 # Load environment variables
 load_dotenv()
 
 # Import models
 from models import Product
+
+def safe_print(text):
+    """Print text with emoji fallback for Windows terminals"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Remove emojis if terminal doesn't support them
+        import re
+        text_no_emoji = re.sub(r'[^\x00-\x7F]+', '', text)
+        print(text_no_emoji)
 
 def migrate_data():
     """Migrate all products from SQLite to PostgreSQL"""
@@ -23,11 +42,11 @@ def migrate_data():
     sqlite_path = 'plants.db'
     
     if not postgres_url:
-        print("❌ ERROR: DATABASE_URL not found in .env file")
+        safe_print("ERROR: DATABASE_URL not found in .env file")
         return False
     
     if not os.path.exists(sqlite_path):
-        print(f"❌ ERROR: {sqlite_path} not found")
+        safe_print(f"ERROR: {sqlite_path} not found")
         return False
     
     # Fix postgres:// to postgresql://
@@ -38,15 +57,15 @@ def migrate_data():
     if '+psycopg2' not in postgres_url:
         postgres_url = postgres_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
     
-    print("=" * 70)
-    print("🚀 Starting Migration: SQLite → Neon PostgreSQL")
-    print("=" * 70)
+    safe_print("=" * 70)
+    safe_print("🚀 Starting Migration: SQLite → Neon PostgreSQL")
+    safe_print("=" * 70)
     
     # Create engines
-    print(f"\n📂 Connecting to SQLite: {sqlite_path}")
+    safe_print(f"\n📂 Connecting to SQLite: {sqlite_path}")
     sqlite_engine = create_engine(f'sqlite:///{sqlite_path}')
     
-    print(f"🐘 Connecting to Neon PostgreSQL...")
+    safe_print(f"🐘 Connecting to Neon PostgreSQL...")
     postgres_engine = create_engine(postgres_url)
     
     # Create sessions
@@ -57,32 +76,39 @@ def migrate_data():
     postgres_session = PostgresSession()
     
     try:
+        # Create tables in PostgreSQL if they don't exist
+        safe_print("🔧 Creating database tables in PostgreSQL...")
+        from models import db
+        # Create all tables defined in models
+        Product.__table__.create(postgres_engine, checkfirst=True)
+        safe_print("   ✓ Tables ready")
+        
         # Check SQLite data
-        print("\n📊 Reading products from SQLite...")
+        safe_print("\n📊 Reading products from SQLite...")
         sqlite_products = sqlite_session.query(Product).all()
         total = len(sqlite_products)
-        print(f"   Found {total} products")
+        safe_print(f"   Found {total} products")
         
         if total == 0:
-            print("ℹ️  No products to migrate")
+            safe_print("ℹ️  No products to migrate")
             return True
         
         # Check existing PostgreSQL data
         existing = postgres_session.query(Product).count()
-        print(f"\n🔍 PostgreSQL currently has {existing} products")
+        safe_print(f"\n🔍 PostgreSQL currently has {existing} products")
         
         if existing > 0:
             response = input("\n⚠️  PostgreSQL already has data. Clear and migrate? (yes/no): ")
             if response.lower() != 'yes':
-                print("❌ Migration cancelled")
+                safe_print("❌ Migration cancelled")
                 return False
             
-            print("🗑️  Clearing existing data...")
+            safe_print("🗑️  Clearing existing data...")
             postgres_session.query(Product).delete()
             postgres_session.commit()
         
         # Migrate products
-        print(f"\n🚚 Migrating {total} products to Neon...")
+        safe_print(f"\n🚚 Migrating {total} products to Neon...")
         migrated = 0
         
         for product in sqlite_products:
@@ -104,7 +130,7 @@ def migrate_data():
             # Commit in batches
             if migrated % 50 == 0:
                 postgres_session.commit()
-                print(f"   ✓ {migrated}/{total} products migrated...")
+                safe_print(f"   ✓ {migrated}/{total} products migrated...")
         
         # Final commit
         postgres_session.commit()
@@ -112,21 +138,21 @@ def migrate_data():
         # Verify
         final_count = postgres_session.query(Product).count()
         
-        print("\n" + "=" * 70)
-        print("✅ Migration Complete!")
-        print("=" * 70)
-        print(f"   SQLite products:     {total}")
-        print(f"   PostgreSQL products: {final_count}")
+        safe_print("\n" + "=" * 70)
+        safe_print("✅ Migration Complete!")
+        safe_print("=" * 70)
+        safe_print(f"   SQLite products:     {total}")
+        safe_print(f"   PostgreSQL products: {final_count}")
         
         if final_count == total:
-            print("\n🎉 All products successfully migrated to Neon!")
+            safe_print("\n🎉 All products successfully migrated to Neon!")
             return True
         else:
-            print("\n⚠️  Count mismatch - please verify")
+            safe_print("\n⚠️  Count mismatch - please verify")
             return False
     
     except Exception as e:
-        print(f"\n❌ ERROR: {e}")
+        safe_print(f"\n❌ ERROR: {e}")
         postgres_session.rollback()
         import traceback
         traceback.print_exc()
@@ -135,18 +161,18 @@ def migrate_data():
     finally:
         sqlite_session.close()
         postgres_session.close()
-        print("\n🔒 Database connections closed")
+        safe_print("\n🔒 Database connections closed")
 
 
 if __name__ == '__main__':
-    print("\n🌿 Plants Hub - Database Migration Tool\n")
+    safe_print("\n🌿 Plants Hub - Database Migration Tool\n")
     
     success = migrate_data()
     
     if success:
-        print("\n✨ Migration successful!")
-        print("   Your products are now in Neon PostgreSQL")
-        print("   Render deployment will use this database")
+        safe_print("\n✨ Migration successful!")
+        safe_print("   Your products are now in Neon PostgreSQL")
+        safe_print("   Render deployment will use this database")
     else:
-        print("\n❌ Migration failed")
+        safe_print("\n❌ Migration failed")
         sys.exit(1)
