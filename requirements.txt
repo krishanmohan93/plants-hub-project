@@ -3,8 +3,8 @@ Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Werkzeug==3.0.1
 
-# Database drivers - psycopg2-binary for PostgreSQL
-psycopg2-binary==2.9.9
+# Database drivers - psycopg for PostgreSQL (v3 with better compatibility)
+psycopg[binary]==3.2.3
 
 # Production server
 gunicorn==21.2.0

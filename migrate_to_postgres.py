@@ -53,9 +53,9 @@ def migrate_data():
     if postgres_url.startswith('postgres://'):
         postgres_url = postgres_url.replace('postgres://', 'postgresql://', 1)
     
-    # Force psycopg2 driver
-    if '+psycopg2' not in postgres_url:
-        postgres_url = postgres_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    # Use psycopg (v3) driver for better compatibility
+    if '+psycopg' not in postgres_url:
+        postgres_url = postgres_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     
     safe_print("=" * 70)
     safe_print("🚀 Starting Migration: SQLite → Neon PostgreSQL")
