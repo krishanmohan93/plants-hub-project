@@ -8,6 +8,7 @@ import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from sqlalchemy import or_, and_
+import cloudinary_config
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -268,15 +269,42 @@ def add_product():
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(file.filename)
-                    # Add timestamp to avoid name conflicts
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    name, ext = os.path.splitext(filename)
-                    filename = f"{name}_{timestamp}{ext}"
-                    
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    file.save(filepath)
-                    image_filename = filename
+                    # Try Cloudinary first, fallback to local storage
+                    if cloudinary_config.is_configured():
+                        try:
+                            result = cloudinary_config.upload_image(file)
+                            if result:
+                                image_filename = result['url']
+                                flash('Image uploaded to cloud storage successfully!', 'success')
+                            else:
+                                flash('Cloud upload failed, using local storage.', 'warning')
+                                # Fallback to local storage
+                                filename = secure_filename(file.filename)
+                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                name, ext = os.path.splitext(filename)
+                                filename = f"{name}_{timestamp}{ext}"
+                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                file.save(filepath)
+                                image_filename = filename
+                        except Exception as e:
+                            flash(f'Cloud upload error: {str(e)}. Using local storage.', 'warning')
+                            # Fallback to local storage
+                            filename = secure_filename(file.filename)
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            name, ext = os.path.splitext(filename)
+                            filename = f"{name}_{timestamp}{ext}"
+                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                            file.save(filepath)
+                            image_filename = filename
+                    else:
+                        # Local storage (Cloudinary not configured)
+                        filename = secure_filename(file.filename)
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        name, ext = os.path.splitext(filename)
+                        filename = f"{name}_{timestamp}{ext}"
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        file.save(filepath)
+                        image_filename = filename
                 elif file and file.filename:
                     flash('Invalid file type! Please upload PNG, JPG, JPEG, or GIF.', 'danger')
                     return redirect(url_for('add_product'))
@@ -371,18 +399,46 @@ def edit_product(product_id):
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(file.filename)
-                    # Add timestamp to avoid name conflicts
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    name, ext = os.path.splitext(filename)
-                    filename = f"{name}_{timestamp}{ext}"
+                    # Try Cloudinary first, fallback to local storage
+                    if cloudinary_config.is_configured():
+                        try:
+                            result = cloudinary_config.upload_image(file)
+                            if result:
+                                new_image = result['url']
+                                # Delete old Cloudinary image if it exists
+                                if current_image and current_image.startswith('http') and not keep_image:
+                                    # Extract public_id from URL if it's a Cloudinary URL
+                                    pass  # Cloudinary handles this automatically
+                            else:
+                                # Fallback to local
+                                filename = secure_filename(file.filename)
+                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                name, ext = os.path.splitext(filename)
+                                filename = f"{name}_{timestamp}{ext}"
+                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                                file.save(filepath)
+                                new_image = filename
+                        except Exception as e:
+                            # Fallback to local storage
+                            filename = secure_filename(file.filename)
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            name, ext = os.path.splitext(filename)
+                            filename = f"{name}_{timestamp}{ext}"
+                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                            file.save(filepath)
+                            new_image = filename
+                    else:
+                        # Local storage
+                        filename = secure_filename(file.filename)
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        name, ext = os.path.splitext(filename)
+                        filename = f"{name}_{timestamp}{ext}"
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        file.save(filepath)
+                        new_image = filename
                     
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    file.save(filepath)
-                    new_image = filename
-                    
-                    # Delete old image if it exists and is being replaced
-                    if current_image and not keep_image:
+                    # Delete old local image if it exists and is being replaced
+                    if current_image and not current_image.startswith('http') and not keep_image:
                         old_image_path = os.path.join(app.config['UPLOAD_FOLDER'], current_image)
                         if os.path.exists(old_image_path):
                             try:

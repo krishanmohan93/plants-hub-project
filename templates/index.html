@@ -398,10 +398,19 @@
                 <div class="card product-card">
                     <!-- Product Image -->
                     {% if product.Image_File %}
-                    <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
-                         class="card-img-top product-image" 
-                         alt="{{ product.Product_Name }}"
-                         onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                        {% if product.Image_File.startswith('http') %}
+                        <!-- Cloudinary URL -->
+                        <img src="{{ product.Image_File }}" 
+                             class="card-img-top product-image" 
+                             alt="{{ product.Product_Name }}"
+                             onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                        {% else %}
+                        <!-- Local file -->
+                        <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
+                             class="card-img-top product-image" 
+                             alt="{{ product.Product_Name }}"
+                             onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                        {% endif %}
                     {% else %}
                     <img src="{{ url_for('static', filename='images/placeholder.svg') }}" 
                          class="card-img-top product-image" 
