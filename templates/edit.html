@@ -275,7 +275,8 @@
                                 <div class="preview-container" id="currentImageContainer">
                                     <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
                                          class="current-image" 
-                                         alt="{{ product.Product_Name }}">
+                                         alt="{{ product.Product_Name }}"
+                                         onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
                                 </div>
                                 <div class="form-check mt-2">
                                     <input class="form-check-input" 

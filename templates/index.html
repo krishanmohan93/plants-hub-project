@@ -401,11 +401,11 @@
                     <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
                          class="card-img-top product-image" 
                          alt="{{ product.Product_Name }}"
-                         onerror="this.src='{{ url_for('static', filename='images/placeholder.jpg') }}'">
+                         onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
                     {% else %}
-                    <div class="card-img-top product-image d-flex align-items-center justify-content-center bg-light">
-                        <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
-                    </div>
+                    <img src="{{ url_for('static', filename='images/placeholder.svg') }}" 
+                         class="card-img-top product-image" 
+                         alt="No image available">
                     {% endif %}
                     
                     <div class="card-body">
