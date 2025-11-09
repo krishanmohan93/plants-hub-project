@@ -40,8 +40,9 @@ class Product(db.Model):
     price = db.Column(db.Numeric(10, 2), nullable=False)
     quantity = db.Column(db.Integer, default=0)
     
-    # Image
-    image_url = db.Column(db.String(255), nullable=True)
+    # Image CDN URL and provider file id for deletion
+    image_url = db.Column(db.String(500), nullable=True)
+    image_file_id = db.Column(db.String(200), nullable=True, index=True)
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -64,6 +65,7 @@ class Product(db.Model):
             'price': float(self.price),
             'quantity': self.quantity,
             'image_url': self.image_url,
+            'image_file_id': self.image_file_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

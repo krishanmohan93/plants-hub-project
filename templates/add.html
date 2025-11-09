@@ -197,6 +197,7 @@
                     <div class="card-body p-4">
                         <form method="POST" enctype="multipart/form-data" id="addProductForm">
                             <input type="hidden" name="uploaded_image_url" id="uploaded_image_url" />
+                            <input type="hidden" name="uploaded_image_id" id="uploaded_image_id" />
                             
                             <!-- Product Name -->
                             <div class="mb-4">
@@ -422,11 +423,13 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Upload failed');
                 document.getElementById('uploaded_image_url').value = data.url;
+                if (data.file_id) { document.getElementById('uploaded_image_id').value = data.file_id; }
                 return data.url;
             } catch (err) {
                 console.error('Upload error:', err);
                 alert('Image upload failed: ' + err.message);
                 document.getElementById('uploaded_image_url').value = '';
+                document.getElementById('uploaded_image_id').value = '';
                 return null;
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-plus-circle"></i> Add Product'; }

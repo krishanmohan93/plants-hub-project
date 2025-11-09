@@ -96,3 +96,24 @@ def upload_image(file, folder: str = "plants_hub"):
     except Exception as e:
         logger.exception("ImageKit upload error: %s", e)
         return {"error": "exception", "message": str(e)}
+
+
+def delete_image(file_id: str):
+    """Delete an image from ImageKit by file_id.
+
+    Returns True on success, or a dict {error, message} on failure.
+    """
+    if not is_configured():
+        msg = "ImageKit not configured. Cannot delete image."
+        logger.warning(msg)
+        return {"error": "not_configured", "message": msg}
+    if not file_id:
+        return {"error": "invalid_id", "message": "No file_id provided"}
+    try:
+        resp = _client.delete_file(file_id)
+        # SDK returns dict or object depending on version; treat no exception as success
+        logger.info("🗑️ Deleted ImageKit file %s", file_id)
+        return True
+    except Exception as e:
+        logger.exception("ImageKit delete error for %s: %s", file_id, e)
+        return {"error": "exception", "message": str(e)}
