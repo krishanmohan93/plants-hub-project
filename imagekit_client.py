@@ -60,11 +60,13 @@ def upload_image(file, folder: str = "plants_hub"):
     """Upload an image to ImageKit.
 
     Accepts a Werkzeug FileStorage or file-like object supporting .read().
-    Returns dict {url, file_id, name} or None on error.
+    Returns on success: {url, file_id, name}
+    Returns on failure: {error: <code>, message: <human readable>}
     """
     if not is_configured():
-        logger.warning("ImageKit upload attempted but client not configured")
-        return None
+        msg = "ImageKit not configured. Check environment variables."
+        logger.warning(msg + " %s", masked_config())
+        return {"error": "not_configured", "message": msg}
     try:
         filename = getattr(file, 'filename', None) or getattr(file, 'name', 'upload')
         if UploadFileRequestOptions:
@@ -85,7 +87,7 @@ def upload_image(file, folder: str = "plants_hub"):
             )
         if not result or not getattr(result, 'url', None):
             logger.error("ImageKit returned empty result for %s", filename)
-            return None
+            return {"error": "empty_result", "message": "Upload returned no URL from ImageKit."}
         return {
             'url': result.url,
             'file_id': getattr(result, 'file_id', None),
@@ -93,4 +95,4 @@ def upload_image(file, folder: str = "plants_hub"):
         }
     except Exception as e:
         logger.exception("ImageKit upload error: %s", e)
-        return None
+        return {"error": "exception", "message": str(e)}
