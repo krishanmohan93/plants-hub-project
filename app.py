@@ -44,9 +44,6 @@ db.init_app(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('plants_hub')
 
-# Run DB migrations immediately on import so Gunicorn workers apply schema
-run_db_migrations()
-
 
 # ----------------------------------------------------------------------------
 # Tiny migration: ensure image_file_id exists (Postgres & SQLite compatible)
@@ -75,6 +72,9 @@ def run_db_migrations():
                         logger.warning('SQLite detected without image_file_id column. Consider recreating DB.')
     except Exception as e:
         logger.warning('Migration check failed: %s', e)
+
+# Run DB migrations after definition (import-time)
+run_db_migrations()
 
 
 # ----------------------------------------------------------------------------
