@@ -3,9 +3,12 @@ Plants Hub - Flask Web Application with SQLAlchemy Database
 Refactored from CSV storage to proper database using SQLAlchemy ORM
 """
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import os
-from werkzeug.utils import secure_filename
+import logging
+import io
+import base64
+import imagekit_client
 from datetime import datetime
 from sqlalchemy import or_, and_
 import cloudinary_config
@@ -61,95 +64,127 @@ app.config['SQLALCHEMY_ECHO'] = not bool(database_url)
 db.init_app(app)
 
 # ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("plants_hub")
+logger.info("🌱 Plants Hub application starting. Cloudinary required for persistent images.")
+
+# ============================================================================
 # FILE UPLOAD CONFIGURATION
 # ============================================================================
 
 UPLOAD_FOLDER = 'static/images'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+            if 'image' in request.files or 'uploaded_image_url' in request.form:
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Ensure upload folder exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+                    # Upload to ImageKit if not already provided by frontend
+                    if not image_filename and imagekit_client.is_configured():
 
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
+                            result = imagekit_client.upload_image(file)
+                            if result and result.get('url'):
+                                image_filename = result['url']
 
-# Product categories for filtering
-CATEGORIES = {
+                                flash('Image uploaded to cloud storage successfully!', 'success')
+                                logger.info(f"✅ ImageKit upload success for product '{product_name}' -> {image_filename}")
     'ceramic_pot': ['ceramic', 'pottery'],
     'plastic_pot': ['plastic'],
     'terracotta_pot': ['terracotta', 'clay', 'soil'],
-    'fiber_pot': ['fiber', 'fibre'],
+                                logger.error(f"❌ ImageKit upload returned empty result for product '{product_name}'")
     'indoor_plant': ['indoor', 'snake plant', 'money plant', 'pothos', 'succulent'],
     'outdoor_plant': ['outdoor', 'garden'],
-    'colorful_pot': ['red', 'blue', 'green', 'orange', 'yellow', 'multicolor', 'purple', 'pink']
+                            logger.exception(f"❌ ImageKit exception for product '{product_name}'")
 }
-
-def allowed_file(filename):
+                        if not image_filename:
+                            flash('ImageKit not configured – image ignored. Configure env vars and re-upload.', 'warning')
+                            logger.warning("ImageKit not configured; image upload skipped.")
     """Check if uploaded file has allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # ============================================================================
 # ROUTES - Main Pages
-# ============================================================================
-
+                    # Upload to ImageKit
+                    if imagekit_client.is_configured():
 @app.route('/')
-def index():
-    """
-    Home page - Display all products with search and category filtering
+                            result = imagekit_client.upload_image(file)
+                            if result and result.get('url'):
+                                new_image = result['url']
     Uses SQLAlchemy queries instead of pandas DataFrame
-    """
-    try:
-        # Start with base query
-        query = Product.query
-        
+                                logger.info(f"✅ ImageKit upload success (edit) for product '{product_name}' -> {new_image}")
         # Get search parameters from request
         search_query = request.args.get('search', '').strip()
-        min_price = request.args.get('min_price', '').strip()
+                                logger.error(f"❌ ImageKit upload returned empty result on edit for '{product_name}'")
         max_price = request.args.get('max_price', '').strip()
         category_filter = request.args.get('category', '').strip()
-        
+                            logger.exception(f"❌ ImageKit exception during edit for '{product_name}'")
         # Build suggestions (unique product names) for autocomplete
-        suggestions = []
-        try:
+                        flash('ImageKit not configured – cannot change image.', 'warning')
+                        logger.warning("ImageKit not configured on edit; image unchanged.")
             suggestions = sorted(
                 [p.name for p in Product.query.with_entities(Product.name).distinct().all()],
                 key=str.casefold
+# DIAGNOSTICS + UPLOAD API (ImageKit)
+# ============================================================================
+@app.route('/diagnostics/imagekit')
+def diagnostics_imagekit():
+    """Return JSON diagnostics about ImageKit configuration and test upload."""
+    configured = imagekit_client.is_configured()
+    test_upload_status = None
+    test_upload_url = None
+    error = None
+    if configured:
+        try:
+            png_base64 = (
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5gA9kAAAAASUVORK5CYII='
             )
-        except Exception:
-            suggestions = []
-        
-        # Apply text search filter (search in name and description)
-        if search_query:
-            search_pattern = f'%{search_query}%'
-            query = query.filter(
-                or_(
-                    Product.name.ilike(search_pattern),
-                    Product.description.ilike(search_pattern)
-                )
-            )
-        
-        # Apply category filter
-        if category_filter and category_filter != 'all':
-            keywords = CATEGORIES.get(category_filter, [])
-            if keywords:
-                # Build OR conditions for category keywords
-                category_conditions = []
-                for keyword in keywords:
-                    pattern = f'%{keyword}%'
-                    category_conditions.append(Product.name.ilike(pattern))
-                    category_conditions.append(Product.description.ilike(pattern))
-                
-                query = query.filter(or_(*category_conditions))
-        
-        # Apply price range filters
-        if min_price:
-            try:
-                query = query.filter(Product.price >= float(min_price))
-            except ValueError:
+            data = base64.b64decode(png_base64)
+            file_obj = io.BytesIO(data)
+            file_obj.name = 'diagnostic.png'
+            result = imagekit_client.upload_image(file_obj, folder='plants_hub/diagnostics')
+            if result and result.get('url'):
+                test_upload_status = 'success'
+                test_upload_url = result.get('url')
+            else:
+                test_upload_status = 'failed'
+        except Exception as ex:
+            error = str(ex)
+            test_upload_status = 'error'
+            logger.exception("Diagnostic ImageKit upload failed")
+    return jsonify({
+        'imagekit_configured': configured,
+        'test_upload_status': test_upload_status,
+        'test_upload_url': test_upload_url,
+        'error': error
+    })
+
+@app.route('/upload', methods=['POST'])
+def api_upload_image():
+    """API endpoint to upload a single image file to ImageKit.
+    Expects multipart/form-data with 'image' field. Returns JSON {url, file_id, name}.
+    """
+    if not imagekit_client.is_configured():
+        return jsonify({'error': 'ImageKit is not configured on the server'}), 500
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image file provided'}), 400
+    file = request.files['image']
+    if not file or not file.filename:
+        return jsonify({'error': 'Empty file'}), 400
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
+    try:
+        result = imagekit_client.upload_image(file)
+        if not result or not result.get('url'):
+            return jsonify({'error': 'Upload failed'}), 500
+        return jsonify({
+            'url': result.get('url'),
+            'file_id': result.get('file_id'),
+            'name': result.get('name')
+        })
+    except Exception as ex:
+        logger.exception("/upload failed")
+        return jsonify({'error': str(ex)}), 500
                 pass
         
         if max_price:
@@ -266,6 +301,7 @@ def add_product():
             
             # Handle file upload
             image_filename = None
+            cloud_used = False
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_file(file.filename):
@@ -275,36 +311,19 @@ def add_product():
                             result = cloudinary_config.upload_image(file)
                             if result:
                                 image_filename = result['url']
+                                cloud_used = True
                                 flash('Image uploaded to cloud storage successfully!', 'success')
+                                logger.info(f"✅ Cloudinary upload success for product '{product_name}' -> {image_filename}")
                             else:
-                                flash('Cloud upload failed, using local storage.', 'warning')
-                                # Fallback to local storage
-                                filename = secure_filename(file.filename)
-                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                                name, ext = os.path.splitext(filename)
-                                filename = f"{name}_{timestamp}{ext}"
-                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                                file.save(filepath)
-                                image_filename = filename
+                                # Do NOT silently fallback – tell user and keep no image
+                                flash('Cloud upload failed – product saved without image. Please retry.', 'danger')
+                                logger.error(f"❌ Cloudinary upload returned empty result for product '{product_name}'")
                         except Exception as e:
-                            flash(f'Cloud upload error: {str(e)}. Using local storage.', 'warning')
-                            # Fallback to local storage
-                            filename = secure_filename(file.filename)
-                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            name, ext = os.path.splitext(filename)
-                            filename = f"{name}_{timestamp}{ext}"
-                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                            file.save(filepath)
-                            image_filename = filename
+                            flash(f'Cloud upload error: {str(e)}. Product saved without image. Retry editing to add image.', 'danger')
+                            logger.exception(f"❌ Cloudinary exception for product '{product_name}'")
                     else:
-                        # Local storage (Cloudinary not configured)
-                        filename = secure_filename(file.filename)
-                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        name, ext = os.path.splitext(filename)
-                        filename = f"{name}_{timestamp}{ext}"
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        file.save(filepath)
-                        image_filename = filename
+                        flash('Cloudinary not configured – image ignored. Configure env vars and re-upload.', 'warning')
+                        logger.warning("Cloudinary not configured; image upload skipped.")
                 elif file and file.filename:
                     flash('Invalid file type! Please upload PNG, JPG, JPEG, or GIF.', 'danger')
                     return redirect(url_for('add_product'))
@@ -323,7 +342,10 @@ def add_product():
             db.session.add(new_product)
             db.session.commit()
             
-            flash(f'Product "{product_name}" added successfully!', 'success')
+            if cloud_used:
+                flash(f'Product "{product_name}" added successfully with cloud image ✅', 'success')
+            else:
+                flash(f'Product "{product_name}" added successfully (no persistent image)', 'warning')
             return redirect(url_for('index'))
         
         except Exception as e:
@@ -396,6 +418,7 @@ def edit_product(product_id):
             current_image = product.image_url
             new_image = current_image if keep_image else None
             
+            cloud_used = False
             if 'image' in request.files:
                 file = request.files['image']
                 if file and file.filename and allowed_file(file.filename):
@@ -405,37 +428,21 @@ def edit_product(product_id):
                             result = cloudinary_config.upload_image(file)
                             if result:
                                 new_image = result['url']
+                                cloud_used = True
                                 # Delete old Cloudinary image if it exists
                                 if current_image and current_image.startswith('http') and not keep_image:
                                     # Extract public_id from URL if it's a Cloudinary URL
                                     pass  # Cloudinary handles this automatically
+                                logger.info(f"✅ Cloudinary upload success (edit) for product '{product_name}' -> {new_image}")
                             else:
-                                # Fallback to local
-                                filename = secure_filename(file.filename)
-                                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                                name, ext = os.path.splitext(filename)
-                                filename = f"{name}_{timestamp}{ext}"
-                                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                                file.save(filepath)
-                                new_image = filename
+                                flash('Cloud upload failed – image unchanged.', 'danger')
+                                logger.error(f"❌ Cloudinary upload returned empty result on edit for '{product_name}'")
                         except Exception as e:
-                            # Fallback to local storage
-                            filename = secure_filename(file.filename)
-                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            name, ext = os.path.splitext(filename)
-                            filename = f"{name}_{timestamp}{ext}"
-                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                            file.save(filepath)
-                            new_image = filename
+                            flash(f'Cloud upload error: {str(e)} – image unchanged.', 'danger')
+                            logger.exception(f"❌ Cloudinary exception during edit for '{product_name}'")
                     else:
-                        # Local storage
-                        filename = secure_filename(file.filename)
-                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        name, ext = os.path.splitext(filename)
-                        filename = f"{name}_{timestamp}{ext}"
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        file.save(filepath)
-                        new_image = filename
+                        flash('Cloudinary not configured – cannot change image.', 'warning')
+                        logger.warning("Cloudinary not configured on edit; image unchanged.")
                     
                     # Delete old local image if it exists and is being replaced
                     if current_image and not current_image.startswith('http') and not keep_image:
@@ -461,7 +468,10 @@ def edit_product(product_id):
             # Commit changes to database
             db.session.commit()
             
-            flash(f'Product "{product_name}" updated successfully!', 'success')
+            if cloud_used:
+                flash(f'Product "{product_name}" updated successfully with cloud image ✅', 'success')
+            else:
+                flash(f'Product "{product_name}" updated successfully (image unchanged)', 'info')
             return redirect(url_for('index'))
         
         except Exception as e:
@@ -520,6 +530,43 @@ def delete_product(product_id):
         flash(f'Error deleting product: {str(e)}', 'danger')
     
     return redirect(url_for('index'))
+
+
+# ============================================================================
+# DIAGNOSTICS ROUTES
+# ============================================================================
+@app.route('/diagnostics/cloudinary')
+def diagnostics_cloudinary():
+    """Return JSON diagnostics about Cloudinary configuration and test upload."""
+    configured = cloudinary_config.is_configured()
+    test_upload_status = None
+    test_upload_url = None
+    error = None
+    if configured:
+        try:
+            # 1x1 transparent PNG base64
+            png_base64 = (
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5gA9kAAAAASUVORK5CYII='
+            )
+            data = base64.b64decode(png_base64)
+            file_obj = io.BytesIO(data)
+            file_obj.name = 'diagnostic.png'
+            result = cloudinary_config.upload_image(file_obj, folder='plants_hub/diagnostics')
+            if result and result.get('url'):
+                test_upload_status = 'success'
+                test_upload_url = result.get('url')
+            else:
+                test_upload_status = 'failed'
+        except Exception as ex:
+            error = str(ex)
+            test_upload_status = 'error'
+            logger.exception("Diagnostic Cloudinary upload failed")
+    return jsonify({
+        'cloudinary_configured': configured,
+        'test_upload_status': test_upload_status,
+        'test_upload_url': test_upload_url,
+        'error': error
+    })
 
 
 # ============================================================================
