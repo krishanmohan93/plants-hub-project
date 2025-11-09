@@ -47,34 +47,38 @@ logger = logging.getLogger('plants_hub')
 
 # ----------------------------------------------------------------------------
 # Tiny migration: ensure image_file_id exists (Postgres & SQLite compatible)
+# Run once before first request to avoid double-init issues
 # ----------------------------------------------------------------------------
+@app.before_request
 def run_db_migrations():
+    # Remove hook after first run to avoid repeated execution
+    app.before_request_funcs[None].remove(run_db_migrations)
+    
     try:
-        with app.app_context():
-            # Create table if first run
-            db.create_all()
-            # Add column if missing
-            engine = db.engine
-            dialect = engine.dialect.name
-            if dialect == 'postgresql':
-                with engine.begin() as conn:
-                    conn.execute(text("""
-                        ALTER TABLE products
-                        ADD COLUMN IF NOT EXISTS image_file_id VARCHAR(200);
-                    """))
-            elif dialect == 'sqlite':
-                # SQLite doesn't support IF NOT EXISTS; probe pragma
-                with engine.connect() as conn:
-                    cols = conn.execute(text("PRAGMA table_info(products)")).fetchall()
-                    names = {c[1] for c in cols}
-                    if 'image_file_id' not in names:
-                        # Recreate table is heavy; for dev it's acceptable to skip. Log hint.
-                        logger.warning('SQLite detected without image_file_id column. Consider recreating DB.')
+        # Create tables if needed
+        db.create_all()
+        
+        # Add column if missing
+        engine = db.engine
+        dialect = engine.dialect.name
+        if dialect == 'postgresql':
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    ALTER TABLE products
+                    ADD COLUMN IF NOT EXISTS image_file_id VARCHAR(200);
+                """))
+                conn.commit()
+        elif dialect == 'sqlite':
+            # SQLite doesn't support IF NOT EXISTS; probe pragma
+            with engine.connect() as conn:
+                cols = conn.execute(text("PRAGMA table_info(products)")).fetchall()
+                names = {c[1] for c in cols}
+                if 'image_file_id' not in names:
+                    # Recreate table is heavy; for dev it's acceptable to skip. Log hint.
+                    logger.warning('SQLite detected without image_file_id column. Consider recreating DB.')
+        logger.info('✅ Database migration completed')
     except Exception as e:
         logger.warning('Migration check failed: %s', e)
-
-# Run DB migrations after definition (import-time)
-run_db_migrations()
 
 
 # ----------------------------------------------------------------------------
