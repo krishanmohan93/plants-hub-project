@@ -201,6 +201,7 @@
                 <div class="card form-card">
                     <div class="card-body p-4">
                         <form method="POST" enctype="multipart/form-data" id="editProductForm">
+                            <input type="hidden" name="uploaded_image_url" id="uploaded_image_url" />
                             
                             <!-- Product Name -->
                             <div class="mb-4">
@@ -307,12 +308,12 @@
                                     <i class="bi bi-upload"></i> Upload New Image (Optional)
                                 </label>
                                 <div class="input-group mb-2">
-                                    <input type="file" 
+                     <input type="file" 
                                            class="form-control" 
                                            id="image" 
                                            name="image" 
                                            accept="image/png, image/jpeg, image/jpg, image/gif"
-                                           onchange="previewNewImage(event)">
+                         onchange="handleFileSelected(event)">
                                     <button class="btn btn-outline-primary" type="button" id="cameraButton" onclick="openCamera()">
                                         <i class="bi bi-camera"></i> Camera
                                     </button>
@@ -486,29 +487,44 @@
         });
     </script>
     
-    <!-- Image Preview Script -->
+    <!-- Image Upload + Preview (ImageKit) -->
     <script>
         let cameraStream = null;
-        
-        function previewNewImage(event) {
+
+        async function uploadViaAPI(file) {
+            const form = new FormData();
+            form.append('image', file);
+            const btn = document.querySelector('#editProductForm button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; }
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: form });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
+                document.getElementById('uploaded_image_url').value = data.url;
+                return data.url;
+            } catch (err) {
+                console.error('Upload error:', err);
+                alert('Image upload failed: ' + err.message);
+                document.getElementById('uploaded_image_url').value = '';
+                return null;
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Changes'; }
+            }
+        }
+
+        async function handleFileSelected(event) {
             const file = event.target.files[0];
             const previewContainer = document.getElementById('newImagePreviewContainer');
             const preview = document.getElementById('newImagePreview');
             const keepImageCheckbox = document.getElementById('keep_image');
-            
+
             if (file) {
-                previewContainer.style.display = 'block';
-                
-                // Uncheck "keep current image" when uploading new image
-                if (keepImageCheckbox) {
-                    keepImageCheckbox.checked = false;
+                if (keepImageCheckbox) keepImageCheckbox.checked = false;
+                const url = await uploadViaAPI(file);
+                if (url) {
+                    previewContainer.style.display = 'block';
+                    preview.innerHTML = '<img src="' + url + '" class="preview-image" alt="New Preview">';
                 }
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.innerHTML = `<img src="${e.target.result}" class="preview-image" alt="New Preview">`;
-                };
-                reader.readAsDataURL(file);
             } else {
                 previewContainer.style.display = 'none';
                 preview.innerHTML = `
@@ -517,6 +533,7 @@
                         <p class="text-muted mt-2">New image preview will appear here</p>
                     </div>
                 `;
+                document.getElementById('uploaded_image_url').value = '';
             }
         }
 
@@ -525,30 +542,28 @@
         if (keepImageCheckbox) {
             keepImageCheckbox.addEventListener('change', function() {
                 if (this.checked) {
-                    // Clear file input if user wants to keep current image
                     document.getElementById('image').value = '';
                     document.getElementById('newImagePreviewContainer').style.display = 'none';
+                    document.getElementById('uploaded_image_url').value = '';
                 }
             });
         }
-        
+
         // Camera functionality
         function openCamera() {
             const cameraModal = new bootstrap.Modal(document.getElementById('cameraModal'));
             const video = document.getElementById('cameraVideo');
             const errorDiv = document.getElementById('cameraError');
             const errorMessage = document.getElementById('cameraErrorMessage');
-            
-            // Hide any previous errors
+
             errorDiv.style.display = 'none';
-            
-            // Request camera access
-            navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'environment', // Prefer back camera on mobile
+
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment',
                     width: { ideal: 1920 },
                     height: { ideal: 1080 }
-                } 
+                }
             })
             .then(function(stream) {
                 cameraStream = stream;
@@ -559,17 +574,14 @@
                 console.error('Camera error:', error);
                 errorMessage.textContent = 'Unable to access camera. Please check permissions or try uploading an image instead.';
                 errorDiv.style.display = 'block';
-                
-                // Still show modal to display error
                 cameraModal.show();
             });
-            
-            // Stop camera when modal is closed
+
             document.getElementById('cameraModal').addEventListener('hidden.bs.modal', function() {
                 stopCamera();
             });
         }
-        
+
         function captureImage() {
             const video = document.getElementById('cameraVideo');
             const canvas = document.getElementById('cameraCanvas');
@@ -577,42 +589,27 @@
             const previewContainer = document.getElementById('newImagePreviewContainer');
             const preview = document.getElementById('newImagePreview');
             const keepImageCheckbox = document.getElementById('keep_image');
-            
-            // Set canvas dimensions to match video
+
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            
-            // Draw video frame to canvas
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Convert canvas to blob and create file
+
             canvas.toBlob(function(blob) {
-                // Create a file from the blob
                 const timestamp = new Date().getTime();
                 const file = new File([blob], `camera-capture-${timestamp}.jpg`, { type: 'image/jpeg' });
-                
-                // Create a DataTransfer object to set the file input
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                document.getElementById('image').files = dataTransfer.files;
-                
-                // Uncheck "keep current image" checkbox
-                if (keepImageCheckbox) {
-                    keepImageCheckbox.checked = false;
-                }
-                
-                // Preview the captured image
-                const imageUrl = canvas.toDataURL('image/jpeg');
-                previewContainer.style.display = 'block';
-                preview.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="Captured Image">`;
-                
-                // Close modal and stop camera
+                if (keepImageCheckbox) keepImageCheckbox.checked = false;
+                uploadViaAPI(file).then((url) => {
+                    if (url) {
+                        previewContainer.style.display = 'block';
+                        preview.innerHTML = `<img src="${url}" class="preview-image" alt="Captured Image">`;
+                    }
+                });
                 const cameraModal = bootstrap.Modal.getInstance(document.getElementById('cameraModal'));
                 cameraModal.hide();
                 stopCamera();
-            }, 'image/jpeg', 0.9); // 90% quality
+            }, 'image/jpeg', 0.9);
         }
-        
+
         function stopCamera() {
             if (cameraStream) {
                 cameraStream.getTracks().forEach(track => track.stop());

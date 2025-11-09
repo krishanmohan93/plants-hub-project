@@ -16,4 +16,4 @@ python-dotenv==1.0.0
 SQLAlchemy==2.0.44
 
 # Cloud Image Storage (ImageKit)
-imagekitio==3.0.4
+imagekitio==4.2.0

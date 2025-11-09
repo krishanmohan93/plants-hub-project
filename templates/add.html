@@ -196,6 +196,7 @@
                 <div class="card form-card">
                     <div class="card-body p-4">
                         <form method="POST" enctype="multipart/form-data" id="addProductForm">
+                            <input type="hidden" name="uploaded_image_url" id="uploaded_image_url" />
                             
                             <!-- Product Name -->
                             <div class="mb-4">
@@ -268,12 +269,12 @@
                                     <i class="bi bi-image"></i> Product Image
                                 </label>
                                 <div class="input-group mb-2">
-                                    <input type="file" 
+                     <input type="file" 
                                            class="form-control" 
                                            id="image" 
                                            name="image" 
                                            accept="image/png, image/jpeg, image/jpg, image/gif"
-                                           onchange="previewImage(event)">
+                         onchange="handleFileSelected(event)">
                                     <button class="btn btn-outline-primary" type="button" id="cameraButton" onclick="openCamera()">
                                         <i class="bi bi-camera"></i> Camera
                                     </button>
@@ -411,17 +412,36 @@
     <!-- Image Preview Script -->
     <script>
         let cameraStream = null;
+        async function uploadViaAPI(file) {
+            const form = new FormData();
+            form.append('image', file);
+            const btn = document.querySelector('#addProductForm button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; }
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: form });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Upload failed');
+                document.getElementById('uploaded_image_url').value = data.url;
+                return data.url;
+            } catch (err) {
+                console.error('Upload error:', err);
+                alert('Image upload failed: ' + err.message);
+                document.getElementById('uploaded_image_url').value = '';
+                return null;
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-plus-circle"></i> Add Product'; }
+            }
+        }
         
-        function previewImage(event) {
+        async function handleFileSelected(event) {
             const file = event.target.files[0];
             const preview = document.getElementById('imagePreview');
             
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.innerHTML = `<img src="${e.target.result}" class="preview-image" alt="Preview">`;
-                };
-                reader.readAsDataURL(file);
+                const url = await uploadViaAPI(file);
+                if (url) {
+                    preview.innerHTML = '<img src="' + url + '" class="preview-image" alt="Preview">';
+                }
             } else {
                 preview.innerHTML = `
                     <div class="text-center">
@@ -489,14 +509,12 @@
                 const timestamp = new Date().getTime();
                 const file = new File([blob], `camera-capture-${timestamp}.jpg`, { type: 'image/jpeg' });
                 
-                // Create a DataTransfer object to set the file input
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                document.getElementById('image').files = dataTransfer.files;
-                
-                // Preview the captured image
-                const imageUrl = canvas.toDataURL('image/jpeg');
-                preview.innerHTML = `<img src="${imageUrl}" class="preview-image" alt="Captured Image">`;
+                // Upload via API and preview URL
+                uploadViaAPI(file).then((url) => {
+                    if (url) {
+                        preview.innerHTML = `<img src="${url}" class="preview-image" alt="Captured Image">`;
+                    }
+                });
                 
                 // Close modal and stop camera
                 const cameraModal = bootstrap.Modal.getInstance(document.getElementById('cameraModal'));

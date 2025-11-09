@@ -8,6 +8,7 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +20,8 @@ cloudinary.config(
     api_secret=os.getenv('CLOUDINARY_API_SECRET'),
     secure=True
 )
+
+logger = logging.getLogger("plants_hub.cloudinary")
 
 
 def upload_image(file, folder='plants_hub'):
@@ -54,7 +57,7 @@ def upload_image(file, folder='plants_hub'):
         }
     
     except Exception as e:
-        print(f"Cloudinary upload error: {e}")
+        logger.exception(f"Cloudinary upload error: {e}")
         return None
 
 
@@ -72,7 +75,7 @@ def delete_image(public_id):
         result = cloudinary.uploader.destroy(public_id)
         return result.get('result') == 'ok'
     except Exception as e:
-        print(f"Cloudinary delete error: {e}")
+        logger.exception(f"Cloudinary delete error: {e}")
         return False
 
 
@@ -95,7 +98,7 @@ def get_image_url(public_id, transformation=None):
             transformation=transformation
         )
     except Exception as e:
-        print(f"URL generation error: {e}")
+        logger.exception(f"URL generation error: {e}")
         return None
 
 
@@ -111,3 +114,18 @@ def is_configured():
         os.getenv('CLOUDINARY_API_KEY'),
         os.getenv('CLOUDINARY_API_SECRET')
     ])
+
+
+def masked_config():
+    """Return a redacted view of Cloudinary config for safe logging."""
+    def redact(v):
+        if not v:
+            return None
+        if len(v) <= 6:
+            return '***'
+        return v[:3] + '***' + v[-3:]
+    return {
+        'cloud_name': os.getenv('CLOUDINARY_CLOUD_NAME'),
+        'api_key': redact(os.getenv('CLOUDINARY_API_KEY')),
+        'api_secret': redact(os.getenv('CLOUDINARY_API_SECRET'))
+    }
