@@ -261,11 +261,50 @@
                                 <label for="description" class="form-label fw-bold">
                                     <i class="bi bi-info-circle"></i> Description
                                 </label>
-                                <textarea class="form-control" 
-                                          id="description" 
-                                          name="description" 
-                                          rows="4">{{ product.Description }}</textarea>
-                                <div class="form-text">Add size, material, quantity, or other relevant details</div>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="description" 
+                                       name="description" 
+                                       list="descriptionSuggestions"
+                                       value="{{ product.Description }}"
+                                       placeholder="e.g., 12 inch, 15 inch, 18 inch, quantity: 10...">
+                                <datalist id="descriptionSuggestions">
+                                    <!-- Size Options -->
+                                    <option value="6 inch">
+                                    <option value="8 inch">
+                                    <option value="10 inch">
+                                    <option value="12 inch">
+                                    <option value="15 inch">
+                                    <option value="18 inch">
+                                    <option value="20 inch">
+                                    <option value="24 inch">
+                                    <!-- Size with Details -->
+                                    <option value="12 inch, quantity: 10">
+                                    <option value="15 inch, ceramic material">
+                                    <option value="18 inch, large size">
+                                    <option value="10 inch, medium size">
+                                    <!-- Common Descriptions -->
+                                    <option value="Small size, suitable for indoor plants">
+                                    <option value="Medium size, perfect for balcony">
+                                    <option value="Large size, ideal for outdoor garden">
+                                    <option value="Extra large, decorative pot">
+                                    <!-- Material Types -->
+                                    <option value="Ceramic material, 12 inch">
+                                    <option value="Plastic material, lightweight">
+                                    <option value="Terracotta material, natural clay">
+                                    <option value="Fiber material, eco-friendly">
+                                    <!-- Special Features -->
+                                    <option value="With drainage holes">
+                                    <option value="Self-watering pot">
+                                    <option value="Hanging planter">
+                                    <option value="Wall mounted">
+                                    <!-- Quantity Options -->
+                                    <option value="Quantity: 5">
+                                    <option value="Quantity: 10">
+                                    <option value="Quantity: 20">
+                                    <option value="Quantity: 50">
+                                </datalist>
+                                <div class="form-text">Type to see size suggestions (6", 8", 10", 12", 15", 18", 20", 24") or add custom details</div>
                             </div>
 
                             <!-- Current Image Display -->

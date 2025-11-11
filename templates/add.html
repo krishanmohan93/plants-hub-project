@@ -73,6 +73,20 @@
             animation: slideInDown 0.4s ease-out;
         }
         
+        /* Alert border colors */
+        .alert-success.auto-close-alert {
+            border-left: 4px solid #28a745;
+        }
+        
+        .alert-danger.auto-close-alert {
+            border-left: 4px solid #dc3545;
+        }
+        
+        .alert-info.auto-close-alert, 
+        .alert-warning.auto-close-alert {
+            border-left: 4px solid #17a2b8;
+        }
+        
         @keyframes slideInDown {
             from {
                 opacity: 0;
@@ -165,7 +179,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show position-relative overflow-hidden auto-close-alert" role="alert" style="border-left: 4px solid {% if category == 'success' %}#28a745{% elif category == 'danger' %}#dc3545{% else %}#17a2b8{% endif %};">
+                <div class="alert alert-{{ category }} alert-dismissible fade show position-relative overflow-hidden auto-close-alert" role="alert">
                     <div class="d-flex align-items-center">
                         <div class="flex-shrink-0 me-3" style="font-size: 1.5rem;">
                             {% if category == 'success' %}
@@ -256,12 +270,49 @@
                                 <label for="description" class="form-label fw-bold">
                                     <i class="bi bi-info-circle"></i> Description
                                 </label>
-                                <textarea class="form-control" 
-                                          id="description" 
-                                          name="description" 
-                                          rows="4"
-                                          placeholder="e.g., 15 inch, quantity: 10, ceramic material, suitable for indoor plants..."></textarea>
-                                <div class="form-text">Add size, material, quantity, or other relevant details</div>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="description" 
+                                       name="description" 
+                                       list="descriptionSuggestions"
+                                       placeholder="e.g., 12 inch, 15 inch, 18 inch, quantity: 10...">
+                                <datalist id="descriptionSuggestions">
+                                    <!-- Size Options -->
+                                    <option value="6 inch">
+                                    <option value="8 inch">
+                                    <option value="10 inch">
+                                    <option value="12 inch">
+                                    <option value="15 inch">
+                                    <option value="18 inch">
+                                    <option value="20 inch">
+                                    <option value="24 inch">
+                                    <!-- Size with Details -->
+                                    <option value="12 inch, quantity: 10">
+                                    <option value="15 inch, ceramic material">
+                                    <option value="18 inch, large size">
+                                    <option value="10 inch, medium size">
+                                    <!-- Common Descriptions -->
+                                    <option value="Small size, suitable for indoor plants">
+                                    <option value="Medium size, perfect for balcony">
+                                    <option value="Large size, ideal for outdoor garden">
+                                    <option value="Extra large, decorative pot">
+                                    <!-- Material Types -->
+                                    <option value="Ceramic material, 12 inch">
+                                    <option value="Plastic material, lightweight">
+                                    <option value="Terracotta material, natural clay">
+                                    <option value="Fiber material, eco-friendly">
+                                    <!-- Special Features -->
+                                    <option value="With drainage holes">
+                                    <option value="Self-watering pot">
+                                    <option value="Hanging planter">
+                                    <option value="Wall mounted">
+                                    <!-- Quantity Options -->
+                                    <option value="Quantity: 5">
+                                    <option value="Quantity: 10">
+                                    <option value="Quantity: 20">
+                                    <option value="Quantity: 50">
+                                </datalist>
+                                <div class="form-text">Type to see size suggestions (6", 8", 10", 12", 15", 18", 20", 24") or add custom details</div>
                             </div>
 
                             <!-- Image Upload -->
@@ -449,12 +500,8 @@
                 console.log('📦 Response data:', data);
                 
                 if (!res.ok) {
-                    // If image upload is disabled (503), show info message but allow continuing
-                    if (res.status === 503) {
-                        console.warn('⚠️ ImageKit not configured (503)');
-                        alert('ℹ️ Image upload is currently disabled.\n\nYou can still add the product - it will use a placeholder image for now.\n\nConfigure ImageKit cloud storage to enable image uploads.');
-                        return null;
-                    }
+                    // Silently handle errors - local storage should work
+                    console.error('Upload failed:', data.error || res.statusText);
                     throw new Error(data.error || `Upload failed with status ${res.status}`);
                 }
                 
@@ -478,15 +525,14 @@
                     name: err.name
                 });
                 
-                // Handle specific error types
+                // Handle specific error types - show single alert
                 if (err.name === 'AbortError') {
-                    alert('⏱️ Upload timeout!\n\nThe upload took too long. Please try:\n1. Using a smaller image\n2. Checking your internet connection\n3. Trying again in a moment');
+                    alert('⏱️ Upload timeout! The upload took too long. Please try using a smaller image.');
                 } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-                    alert('🌐 Network Error!\n\nCannot connect to the server. Please:\n1. Check if the server is running\n2. Verify your network connection\n3. Try accessing http://127.0.0.1:5000 directly');
+                    alert('🌐 Network Error! Cannot connect to the server. Please check if the server is running.');
                 } else {
-                    alert('❌ Upload failed!\n\n' + err.message);
+                    alert('❌ Image upload failed: ' + err.message + '\n\nYou can still add the product without an image.');
                 }
-                alert('⚠️ Image upload failed: ' + err.message + '\n\nYou can still add the product without an image.');
                 document.getElementById('uploaded_image_url').value = '';
                 document.getElementById('uploaded_image_id').value = '';
                 return null;

@@ -19,7 +19,6 @@ from sqlalchemy import text
 
 # project modules
 from models import db, Product
-import imagekit_client
 
 # Load environment
 load_dotenv()
@@ -93,16 +92,49 @@ def index():
     # Get filter parameters
     search_query = request.args.get('search', '').strip()
     category_filter = request.args.get('category', 'all').strip()
+    min_price = request.args.get('min_price', '').strip()
+    max_price = request.args.get('max_price', '').strip()
     
-    # Query products
-    products = Product.query.order_by(Product.id.desc()).all()
+    # Start with base query
+    query = Product.query
+    
+    # Apply category filter
+    if category_filter and category_filter != 'all':
+        query = query.filter(Product.category == category_filter)
+    
+    # Apply search filter (search in name and description)
+    if search_query:
+        search_pattern = f'%{search_query}%'
+        query = query.filter(
+            db.or_(
+                Product.name.ilike(search_pattern),
+                Product.description.ilike(search_pattern)
+            )
+        )
+    
+    # Apply price filters
+    if min_price:
+        try:
+            min_price_val = float(min_price)
+            query = query.filter(Product.price >= min_price_val)
+        except ValueError:
+            pass
+    
+    if max_price:
+        try:
+            max_price_val = float(max_price)
+            query = query.filter(Product.price <= max_price_val)
+        except ValueError:
+            pass
+    
+    # Execute query
+    products = query.order_by(Product.id.desc()).all()
     items = []
     for p in products:
         # Handle both ImageKit URLs (full URLs) and local filenames
         image_url = p.image_url or ''
-        if image_url and not image_url.startswith('http://') and not image_url.startswith('https://'):
-            # Local filename - construct static URL path
-            logger.info(f'Converting local filename to static path: {image_url} -> /static/images/{image_url}')
+        if image_url and not image_url.startswith('http://') and not image_url.startswith('https://') and not image_url.startswith('/static/'):
+            # Local filename without path - construct static URL path
             image_url = f'/static/images/{image_url}'
         
         items.append({
@@ -137,6 +169,8 @@ def index():
                          suggestions=suggestions,
                          search_query=search_query,
                          category_filter=category_filter,
+                         min_price=min_price,
+                         max_price=max_price,
                          category_names=category_names,
                          total_count=len(items))
 
@@ -169,20 +203,34 @@ def add_product():
         except ValueError:
             qty = 0
 
-        uploaded_url = request.form.get('uploaded_image_url', '').strip()
-        uploaded_id = request.form.get('uploaded_image_id', '').strip() or None
-        image_url = uploaded_url or None
-        image_file_id = uploaded_id
-
-        if not image_url and 'image' in request.files:
+        # Handle local image storage
+        image_url = None
+        image_file_id = None
+        
+        if 'image' in request.files:
             f = request.files['image']
             if f and f.filename and allowed_file(f.filename):
-                res = imagekit_client.upload_image(f)
-                if isinstance(res, dict) and res.get('url'):
-                    image_url = res.get('url')
-                    image_file_id = res.get('file_id')
-                else:
-                    logger.warning('ImageKit upload returned: %s', res)
+                try:
+                    # Save to local static/images folder
+                    filename = secure_filename(f.filename)
+                    # Add timestamp to avoid name conflicts
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    unique_filename = f"{timestamp}_{filename}"
+                    
+                    # Ensure the images directory exists
+                    images_dir = os.path.join(app.static_folder, 'images')
+                    os.makedirs(images_dir, exist_ok=True)
+                    
+                    # Save the file
+                    filepath = os.path.join(images_dir, unique_filename)
+                    f.save(filepath)
+                    
+                    # Store just the filename, not the full path
+                    image_url = unique_filename
+                    logger.info(f'Image saved locally: {unique_filename}')
+                    
+                except Exception as e:
+                    logger.error(f'Failed to save image locally: {e}')
                     flash('Image upload failed; product saved without image.', 'warning')
 
         try:
@@ -256,27 +304,36 @@ def edit_product(product_id):
 
             new_url = current_url if keep_image else None
             new_id = current_id if keep_image else None
-            cloud_used = False
 
             if uploaded_url:
-                if not keep_image and current_id:
-                    imagekit_client.delete_image(current_id)
                 new_url = uploaded_url
                 new_id = uploaded_id
-                cloud_used = True
             elif 'image' in request.files:
                 f = request.files['image']
                 if f and f.filename and allowed_file(f.filename):
-                    res = imagekit_client.upload_image(f)
-                    if isinstance(res, dict) and res.get('url'):
-                        if not keep_image and current_id:
-                            imagekit_client.delete_image(current_id)
-                        new_url = res.get('url')
-                        new_id = res.get('file_id')
-                        cloud_used = True
-                    else:
-                        msg = res.get('message') if isinstance(res, dict) else 'Upload failed'
-                        flash(f'Cloud upload failed - {msg}. Image unchanged.', 'danger')
+                    try:
+                        # Save to local static/images folder
+                        filename = secure_filename(f.filename)
+                        # Add timestamp to avoid name conflicts
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        unique_filename = f"{timestamp}_{filename}"
+                        
+                        # Ensure the images directory exists
+                        images_dir = os.path.join(app.static_folder, 'images')
+                        os.makedirs(images_dir, exist_ok=True)
+                        
+                        # Save the file
+                        filepath = os.path.join(images_dir, unique_filename)
+                        f.save(filepath)
+                        
+                        # Store just the filename, not the full path
+                        new_url = unique_filename
+                        new_id = None
+                        logger.info(f'Image updated locally: {unique_filename}')
+                        
+                    except Exception as e:
+                        logger.error(f'Failed to save image locally: {e}')
+                        flash('Image upload failed. Image unchanged.', 'danger')
                 elif f and f.filename:
                     flash('Invalid file type! Please upload PNG, JPG, JPEG, or GIF.', 'danger')
                     return redirect(url_for('edit_product', product_id=product_id))
@@ -292,10 +349,7 @@ def edit_product(product_id):
 
             db.session.commit()
 
-            if cloud_used:
-                flash(f'Product "{name}" updated successfully with cloud image', 'success')
-            else:
-                flash(f'Product "{name}" updated successfully', 'info')
+            flash(f'Product "{name}" updated successfully', 'success')
             return redirect(url_for('index'))
         except Exception as e:
             db.session.rollback()
@@ -331,9 +385,7 @@ def delete_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
         name = product.name
-        file_id = product.image_file_id
-        if file_id:
-            imagekit_client.delete_image(file_id)
+        # Delete the product from database
         db.session.delete(product)
         db.session.commit()
         flash(f'Product "{name}" deleted successfully!', 'success')
@@ -356,13 +408,6 @@ def api_upload_image():
     
     logger.info('📤 Upload request received from %s', request.remote_addr)
     
-    if not imagekit_client.is_configured():
-        logger.warning('⚠️ ImageKit not configured')
-        return jsonify({
-            'error': 'Image upload is currently disabled. ImageKit cloud storage is not configured. You can still add products - they will use a placeholder image.',
-            'config': imagekit_client.masked_config()
-        }), 503
-    
     if 'image' not in request.files:
         logger.error('❌ No image field in request.files. Fields: %s', list(request.files.keys()))
         return jsonify({'error': 'No image provided. Expected field name: "image"'}), 400
@@ -381,75 +426,50 @@ def api_upload_image():
         return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXT)}'}), 400
     
     try:
-        logger.info('☁️ Uploading to ImageKit...')
-        # Save file to temporary buffer to prevent connection issues
-        file_data = f.read()
-        logger.info('📏 File size: %.2f KB', len(file_data) / 1024)
+        logger.info('💾 Saving image locally...')
         
-        # Create BytesIO object for ImageKit upload
-        from io import BytesIO
-        file_buffer = BytesIO(file_data)
-        file_buffer.name = filename
+        # Add timestamp to avoid name conflicts
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_filename = f"{timestamp}_{filename}"
         
-        res = imagekit_client.upload_image(file_buffer)
-        logger.info('📦 ImageKit response: %s', res)
+        # Ensure the images directory exists
+        images_dir = os.path.join(app.static_folder, 'images')
+        os.makedirs(images_dir, exist_ok=True)
         
-        if not res or not res.get('url'):
-            message = res.get('message') if isinstance(res, dict) else None
-            code = res.get('error') if isinstance(res, dict) else None
-            logger.error('❌ Upload failed - code: %s, message: %s', code, message)
-            payload = {'error': message or 'Upload failed - no URL returned from ImageKit'}
-            if code:
-                payload['code'] = code
-            if code == 'not_configured':
-                payload['config'] = imagekit_client.masked_config()
-            return jsonify(payload), 500
+        # Save the file
+        filepath = os.path.join(images_dir, unique_filename)
+        f.save(filepath)
         
-        logger.info('✅ Upload successful: %s', res.get('url'))
-        response_data = {
-            'url': res.get('url'), 
-            'file_id': res.get('file_id'), 
-            'name': res.get('name')
-        }
-        response = jsonify(response_data)
+        logger.info('✅ Image saved locally: %s', unique_filename)
+        
+        # Return the local URL path
+        image_url = f'/static/images/{unique_filename}'
+        
+        response = jsonify({
+            'url': image_url,
+            'filename': unique_filename,
+            'file_id': None
+        })
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 200
-    except ConnectionError as ex:
-        logger.exception('❌ Connection error during upload: %s', ex)
+        
+    except Exception as e:
+        logger.error('❌ Failed to save image: %s', e)
         return jsonify({
-            'error': 'Network connection error. Please check your internet connection and try again.',
-            'type': 'ConnectionError'
-        }), 503
-    except TimeoutError as ex:
-        logger.exception('❌ Timeout during upload: %s', ex)
-        return jsonify({
-            'error': 'Upload timeout. The file may be too large or your connection is slow.',
-            'type': 'TimeoutError'
-        }), 504
-    except Exception as ex:
-        logger.exception('❌ Upload exception: %s', ex)
-        return jsonify({
-            'error': f'Server error during upload: {str(ex)}',
-            'type': type(ex).__name__
+            'error': f'Failed to save image: {str(e)}',
+            'type': 'SaveError'
         }), 500
 
 
 @app.route('/diagnostics/imagekit')
 def diagnostics_imagekit():
-    configured = imagekit_client.is_configured()
-    if not configured:
-        return jsonify({'imagekit_configured': False, 'config': imagekit_client.masked_config()})
-    try:
-        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5gA9kAAAAASUVORK5CYII=')
-        fobj = io.BytesIO(png)
-        fobj.name = 'diag.png'
-        res = imagekit_client.upload_image(fobj, folder='plants_hub/diagnostics')
-        if res and res.get('url'):
-            return jsonify({'imagekit_configured': True, 'test_upload_status': 'success', 'test_upload_url': res.get('url')})
-        return jsonify({'imagekit_configured': True, 'test_upload_status': 'failed', 'details': res}), 200
-    except Exception as ex:
-        logger.exception('Diagnostic upload failed')
-        return jsonify({'imagekit_configured': True, 'test_upload_status': 'error', 'error': str(ex)}), 200
+    """ImageKit diagnostics endpoint - now using local storage"""
+    return jsonify({
+        'imagekit_configured': False,
+        'storage_type': 'local',
+        'storage_path': 'static/images/',
+        'message': 'Using local file storage instead of ImageKit'
+    })
 
 
 @app.errorhandler(404)
