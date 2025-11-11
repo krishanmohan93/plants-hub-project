@@ -417,22 +417,84 @@
             const form = new FormData();
             form.append('image', file);
             const btn = document.querySelector('#addProductForm button[type="submit"]');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; }
+            
+            console.log('🔄 Starting image upload...');
+            console.log('📁 File name:', file.name);
+            console.log('📏 File size:', (file.size / 1024).toFixed(2) + ' KB');
+            console.log('📝 File type:', file.type);
+            
+            if (btn) { 
+                btn.disabled = true; 
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; 
+            }
+            
             try {
-                const res = await fetch('/upload', { method: 'POST', body: form });
+                console.log('🌐 Sending POST request to /upload endpoint...');
+                
+                // Create abort controller for timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+                
+                const res = await fetch('/upload', { 
+                    method: 'POST', 
+                    body: form,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                console.log('📡 Response status:', res.status, res.statusText);
+                
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Upload failed');
+                console.log('📦 Response data:', data);
+                
+                if (!res.ok) {
+                    // If image upload is disabled (503), show info message but allow continuing
+                    if (res.status === 503) {
+                        console.warn('⚠️ ImageKit not configured (503)');
+                        alert('ℹ️ Image upload is currently disabled.\n\nYou can still add the product - it will use a placeholder image for now.\n\nConfigure ImageKit cloud storage to enable image uploads.');
+                        return null;
+                    }
+                    throw new Error(data.error || `Upload failed with status ${res.status}`);
+                }
+                
+                if (!data.url) {
+                    console.error('❌ No URL in response:', data);
+                    throw new Error('Upload succeeded but no image URL was returned');
+                }
+                
+                console.log('✅ Upload successful! Image URL:', data.url);
                 document.getElementById('uploaded_image_url').value = data.url;
-                if (data.file_id) { document.getElementById('uploaded_image_id').value = data.file_id; }
+                if (data.file_id) { 
+                    console.log('🆔 File ID:', data.file_id);
+                    document.getElementById('uploaded_image_id').value = data.file_id; 
+                }
                 return data.url;
             } catch (err) {
-                console.error('Upload error:', err);
-                alert('Image upload failed: ' + err.message);
+                console.error('❌ Upload error:', err);
+                console.error('Error details:', {
+                    message: err.message,
+                    stack: err.stack,
+                    name: err.name
+                });
+                
+                // Handle specific error types
+                if (err.name === 'AbortError') {
+                    alert('⏱️ Upload timeout!\n\nThe upload took too long. Please try:\n1. Using a smaller image\n2. Checking your internet connection\n3. Trying again in a moment');
+                } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                    alert('🌐 Network Error!\n\nCannot connect to the server. Please:\n1. Check if the server is running\n2. Verify your network connection\n3. Try accessing http://127.0.0.1:5000 directly');
+                } else {
+                    alert('❌ Upload failed!\n\n' + err.message);
+                }
+                alert('⚠️ Image upload failed: ' + err.message + '\n\nYou can still add the product without an image.');
                 document.getElementById('uploaded_image_url').value = '';
                 document.getElementById('uploaded_image_id').value = '';
                 return null;
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-plus-circle"></i> Add Product'; }
+                if (btn) { 
+                    btn.disabled = false; 
+                    btn.innerHTML = '<i class="bi bi-plus-circle"></i> Add Product'; 
+                }
             }
         }
         
@@ -441,9 +503,54 @@
             const preview = document.getElementById('imagePreview');
             
             if (file) {
+                console.log('📸 File selected:', file.name);
+                
+                // Validate file type
+                const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+                if (!validTypes.includes(file.type)) {
+                    console.error('❌ Invalid file type:', file.type);
+                    alert('⚠️ Invalid file type! Please upload PNG, JPG, JPEG, or GIF images only.');
+                    event.target.value = ''; // Clear the file input
+                    return;
+                }
+                
+                // Validate file size (max 16MB)
+                const maxSize = 16 * 1024 * 1024; // 16MB in bytes
+                if (file.size > maxSize) {
+                    console.error('❌ File too large:', (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                    alert('⚠️ File is too large! Maximum size is 16MB.\n\nYour file: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                    event.target.value = ''; // Clear the file input
+                    return;
+                }
+                
+                // Show loading state in preview
+                preview.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Uploading...</span>
+                        </div>
+                        <p class="text-muted">Uploading image...</p>
+                    </div>
+                `;
+                
                 const url = await uploadViaAPI(file);
                 if (url) {
-                    preview.innerHTML = '<img src="' + url + '" class="preview-image" alt="Preview">';
+                    console.log('🖼️ Displaying preview with URL:', url);
+                    preview.innerHTML = `
+                        <img src="${url}" class="preview-image" alt="Preview" 
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder.svg') }}'; console.error('Preview image failed to load');">
+                        <div class="mt-2">
+                            <span class="badge bg-success">✓ Upload successful</span>
+                        </div>
+                    `;
+                } else {
+                    console.warn('⚠️ Upload returned null URL');
+                    preview.innerHTML = `
+                        <div class="text-center">
+                            <i class="bi bi-exclamation-triangle upload-icon text-warning"></i>
+                            <p class="text-muted mt-2">Image upload failed. Product will use placeholder image.</p>
+                        </div>
+                    `;
                 }
             } else {
                 preview.innerHTML = `
@@ -512,10 +619,15 @@
                 const timestamp = new Date().getTime();
                 const file = new File([blob], `camera-capture-${timestamp}.jpg`, { type: 'image/jpeg' });
                 
+                console.log('📸 Camera captured image:', file.name, (file.size / 1024).toFixed(2) + ' KB');
+                
                 // Upload via API and preview URL
                 uploadViaAPI(file).then((url) => {
                     if (url) {
-                        preview.innerHTML = `<img src="${url}" class="preview-image" alt="Captured Image">`;
+                        console.log('✅ Camera image uploaded successfully:', url);
+                        preview.innerHTML = `<img src="${url}" class="preview-image" alt="Captured Image" onerror="console.error('Failed to load camera image:', this.src)">`;
+                    } else {
+                        console.warn('⚠️ No URL returned from camera upload');
                     }
                 });
                 

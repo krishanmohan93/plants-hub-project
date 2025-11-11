@@ -1,102 +1,110 @@
 """
-Cloudinary Configuration and Helper Functions
-Handles image uploads to Cloudinary cloud storage
+ImageKit Configuration and Helper Functions
+Handles image uploads to ImageKit cloud storage
 """
 
 import os
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
-from dotenv import load_dotenv
 import logging
+from dotenv import load_dotenv
+from imagekitio import ImageKit
 
 # Load environment variables
 load_dotenv()
 
-# Configure Cloudinary
-cloudinary.config(
-    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.getenv('CLOUDINARY_API_KEY'),
-    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
-    secure=True
+# Configure ImageKit
+imagekit = ImageKit(
+    public_key=os.getenv("IMAGEKIT_PUBLIC_KEY"),
+    private_key=os.getenv("IMAGEKIT_PRIVATE_KEY"),
+    url_endpoint=os.getenv("IMAGEKIT_URL_ENDPOINT")
 )
 
-logger = logging.getLogger("plants_hub.cloudinary")
+logger = logging.getLogger("plants_hub.imagekit")
 
 
-def upload_image(file, folder='plants_hub'):
+def upload_image(file, folder="plants_hub"):
     """
-    Upload an image file to Cloudinary
-    
+    Upload an image file to ImageKit.
+
     Args:
         file: File object from request.files
-        folder: Cloudinary folder name (default: 'plants_hub')
-    
+        folder: Folder name inside ImageKit media library
+
     Returns:
-        dict: Response from Cloudinary with 'url' and 'public_id'
+        dict: { 'url': image_url, 'file_id': imagekit_file_id }
         None: If upload fails
     """
     try:
-        # Upload the file to Cloudinary
-        result = cloudinary.uploader.upload(
-            file,
-            folder=folder,
-            resource_type='image',
-            overwrite=True,
-            invalidate=True,
-            transformation=[
-                {'width': 800, 'height': 600, 'crop': 'limit'},
-                {'quality': 'auto:good'},
-                {'fetch_format': 'auto'}
-            ]
+        # Read file bytes
+        content = file.read()
+
+        # Upload to ImageKit
+        result = imagekit.upload_file(
+            file=content,
+            file_name=file.filename,
+            options={
+                "folder": folder,
+                "use_unique_file_name": True,
+                "transformation": [
+                    {
+                        "width": "800",
+                        "height": "600",
+                        "crop": "maintain_ratio"
+                    },
+                    {"quality": "80"}
+                ]
+            }
         )
-        
+
         return {
-            'url': result.get('secure_url'),
-            'public_id': result.get('public_id')
+            "url": result.url,
+            "file_id": result.file_id
         }
-    
+
     except Exception as e:
-        logger.exception(f"Cloudinary upload error: {e}")
+        logger.exception(f"ImageKit upload error: {e}")
         return None
 
 
-def delete_image(public_id):
+def delete_image(file_id):
     """
-    Delete an image from Cloudinary
-    
+    Delete an image from ImageKit.
+
     Args:
-        public_id: The Cloudinary public ID of the image to delete
-    
+        file_id: ImageKit file ID
+
     Returns:
-        bool: True if deletion was successful, False otherwise
+        bool: True if deletion successful, False otherwise
     """
     try:
-        result = cloudinary.uploader.destroy(public_id)
-        return result.get('result') == 'ok'
+        result = imagekit.delete_file(file_id)
+        return result is not None and result.raw.get("success", False)
     except Exception as e:
-        logger.exception(f"Cloudinary delete error: {e}")
+        logger.exception(f"ImageKit delete error: {e}")
         return False
 
 
-def get_image_url(public_id, transformation=None):
+def get_image_url(file_path, transformation=None):
     """
-    Generate a Cloudinary URL for an image with optional transformations
-    
+    Generate an ImageKit URL with optional transformations.
+
     Args:
-        public_id: The Cloudinary public ID
-        transformation: Optional transformation parameters
-    
+        file_path: Path returned from upload response (not file_id)
+        transformation: List of transformation dicts
+
     Returns:
-        str: Full URL to the image
+        str: CDN URL
     """
-    if not public_id:
+    if not file_path:
         return None
-    
+
     try:
-        return cloudinary.CloudinaryImage(public_id).build_url(
-            transformation=transformation
+        url = imagekit.url(
+            {
+                "path": file_path,
+                "transformation": transformation or []
+            }
         )
+        return url
     except Exception as e:
         logger.exception(f"URL generation error: {e}")
         return None
@@ -104,28 +112,29 @@ def get_image_url(public_id, transformation=None):
 
 def is_configured():
     """
-    Check if Cloudinary is properly configured
-    
+    Check if ImageKit credentials exist.
+
     Returns:
-        bool: True if all required credentials are present
+        bool
     """
     return all([
-        os.getenv('CLOUDINARY_CLOUD_NAME'),
-        os.getenv('CLOUDINARY_API_KEY'),
-        os.getenv('CLOUDINARY_API_SECRET')
+        os.getenv("IMAGEKIT_PUBLIC_KEY"),
+        os.getenv("IMAGEKIT_PRIVATE_KEY"),
+        os.getenv("IMAGEKIT_URL_ENDPOINT")
     ])
 
 
 def masked_config():
-    """Return a redacted view of Cloudinary config for safe logging."""
+    """Return masked ImageKit config for safe logging."""
     def redact(v):
         if not v:
             return None
         if len(v) <= 6:
-            return '***'
-        return v[:3] + '***' + v[-3:]
+            return "***"
+        return v[:3] + "***" + v[-3:]
+
     return {
-        'cloud_name': os.getenv('CLOUDINARY_CLOUD_NAME'),
-        'api_key': redact(os.getenv('CLOUDINARY_API_KEY')),
-        'api_secret': redact(os.getenv('CLOUDINARY_API_SECRET'))
+        "public_key": redact(os.getenv("IMAGEKIT_PUBLIC_KEY")),
+        "private_key": redact(os.getenv("IMAGEKIT_PRIVATE_KEY")),
+        "url_endpoint": os.getenv("IMAGEKIT_URL_ENDPOINT")
     }

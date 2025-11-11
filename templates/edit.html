@@ -496,20 +496,57 @@
             const form = new FormData();
             form.append('image', file);
             const btn = document.querySelector('#editProductForm button[type="submit"]');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; }
+            
+            console.log('🔄 Starting image upload (Edit page)...');
+            console.log('📁 File name:', file.name);
+            console.log('📏 File size:', (file.size / 1024).toFixed(2) + ' KB');
+            console.log('📝 File type:', file.type);
+            
+            if (btn) { 
+                btn.disabled = true; 
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading…'; 
+            }
+            
             try {
+                console.log('🌐 Sending POST request to /upload endpoint...');
                 const res = await fetch('/upload', { method: 'POST', body: form });
+                
+                console.log('📡 Response status:', res.status, res.statusText);
+                
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Upload failed');
+                console.log('📦 Response data:', data);
+                
+                if (!res.ok) {
+                    if (res.status === 503) {
+                        console.warn('⚠️ ImageKit not configured (503)');
+                        alert('ℹ️ Image upload is currently disabled. Configure ImageKit to enable uploads.');
+                        return null;
+                    }
+                    throw new Error(data.error || `Upload failed with status ${res.status}`);
+                }
+                
+                if (!data.url) {
+                    console.error('❌ No URL in response:', data);
+                    throw new Error('Upload succeeded but no image URL was returned');
+                }
+                
+                console.log('✅ Upload successful! Image URL:', data.url);
                 document.getElementById('uploaded_image_url').value = data.url;
+                if (data.file_id) {
+                    console.log('🆔 File ID:', data.file_id);
+                    document.getElementById('uploaded_image_id').value = data.file_id;
+                }
                 return data.url;
             } catch (err) {
-                console.error('Upload error:', err);
-                alert('Image upload failed: ' + err.message);
+                console.error('❌ Upload error:', err);
+                alert('⚠️ Image upload failed: ' + err.message);
                 document.getElementById('uploaded_image_url').value = '';
                 return null;
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Changes'; }
+                if (btn) { 
+                    btn.disabled = false; 
+                    btn.innerHTML = '<i class="bi bi-check-circle"></i> Save Changes'; 
+                }
             }
         }
 
@@ -520,11 +557,58 @@
             const keepImageCheckbox = document.getElementById('keep_image');
 
             if (file) {
+                console.log('📸 File selected for edit:', file.name);
+                
+                // Validate file type
+                const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
+                if (!validTypes.includes(file.type)) {
+                    console.error('❌ Invalid file type:', file.type);
+                    alert('⚠️ Invalid file type! Please upload PNG, JPG, JPEG, or GIF images only.');
+                    event.target.value = '';
+                    return;
+                }
+                
+                // Validate file size (max 16MB)
+                const maxSize = 16 * 1024 * 1024;
+                if (file.size > maxSize) {
+                    console.error('❌ File too large:', (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                    alert('⚠️ File is too large! Maximum size is 16MB.\n\nYour file: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB');
+                    event.target.value = '';
+                    return;
+                }
+                
                 if (keepImageCheckbox) keepImageCheckbox.checked = false;
+                
+                // Show loading state
+                previewContainer.style.display = 'block';
+                preview.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Uploading...</span>
+                        </div>
+                        <p class="text-muted">Uploading new image...</p>
+                    </div>
+                `;
+                
                 const url = await uploadViaAPI(file);
                 if (url) {
-                    previewContainer.style.display = 'block';
-                    preview.innerHTML = '<img src="' + url + '" class="preview-image" alt="New Preview">';
+                    console.log('🖼️ Displaying new preview with URL:', url);
+                    preview.innerHTML = `
+                        <img src="${url}" class="preview-image" alt="New Preview" 
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder.svg') }}'; console.error('Preview image failed to load');">
+                        <div class="mt-2">
+                            <span class="badge bg-success">✓ New image uploaded</span>
+                        </div>
+                    `;
+                } else {
+                    console.warn('⚠️ Upload returned null URL');
+                    previewContainer.style.display = 'none';
+                    preview.innerHTML = `
+                        <div class="text-center">
+                            <i class="bi bi-exclamation-triangle upload-icon text-warning"></i>
+                            <p class="text-muted mt-2">Upload failed</p>
+                        </div>
+                    `;
                 }
             } else {
                 previewContainer.style.display = 'none';
