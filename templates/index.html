@@ -397,8 +397,8 @@
             <div class="col">
                 <div class="card product-card">
                     {% if product.Image_File %}
-                    <img src="{{ product.Image_File }}" class="card-img-top product-image" alt="{{ product.Product_Name }}" 
-                         onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder.svg') }}'; console.error('Failed to load image:', this.getAttribute('src'));">
+                    <img src="{{ product.Image_File }}" data-full="{{ product.Image_File }}" loading="lazy" class="card-img-top product-image" alt="{{ product.Product_Name }}" 
+                        onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/placeholder.svg') }}'; console.error('Failed to load image:', this.getAttribute('src'));">
                     {% else %}
                     <img src="{{ url_for('static', filename='images/placeholder.svg') }}" class="card-img-top product-image" alt="No image available">
                     {% endif %}
@@ -672,5 +672,225 @@
                 });
             })();
         </script>
+            <!-- Fullscreen Image Viewer -->
+            <style>
+                /* Fullscreen viewer styles */
+                .pv-overlay {
+                    position: fixed;
+                    inset: 0;
+                    display: none;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(0,0,0,0.6);
+                    z-index: 2000;
+                    -webkit-backdrop-filter: blur(6px);
+                    backdrop-filter: blur(6px);
+                    transition: opacity 220ms ease;
+                }
+                .pv-overlay.show { display: flex; }
+                .pv-inner {
+                    position: relative;
+                    max-width: 98vw;
+                    max-height: 98vh;
+                    width: auto;
+                    height: auto;
+                    overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    touch-action: none;
+                }
+                .pv-img-wrap {
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                    background: rgba(0,0,0,0.03);
+                    border-radius: 8px;
+                }
+                .pv-img {
+                    max-width: 100%;
+                    max-height: 100%;
+                    transform-origin: center center;
+                    will-change: transform;
+                    touch-action: none;
+                    cursor: grab;
+                }
+                .pv-close {
+                    position: absolute;
+                    top: 12px;
+                    right: 12px;
+                    z-index: 2010;
+                    background: rgba(255,255,255,0.06);
+                    border: none;
+                    color: #fff;
+                    font-size: 1.4rem;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    backdrop-filter: blur(4px);
+                }
+                .pv-spinner {
+                    width: 64px;
+                    height: 64px;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #fff;
+                }
+                @media (max-width: 640px) {
+                    .pv-inner { max-width: 100vw; max-height: 100vh; }
+                }
+            </style>
+
+            <!-- Panzoom (lightweight) -->
+            <script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
+
+            <div id="pvOverlay" class="pv-overlay" tabindex="-1" aria-hidden="true">
+                <div class="pv-inner" role="dialog" aria-modal="true">
+                    <button id="pvClose" class="pv-close" aria-label="Close viewer">&times;</button>
+                    <div class="pv-img-wrap">
+                        <img id="pvImage" class="pv-img" src="" alt="" />
+                    </div>
+                    <div id="pvSpinner" class="pv-spinner" style="position:absolute;"> 
+                        <div class="spinner-border text-light" role="status"><span class="visually-hidden">Loading...</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                (function(){
+                    const overlay = document.getElementById('pvOverlay');
+                    const img = document.getElementById('pvImage');
+                    const spinner = document.getElementById('pvSpinner');
+                    const closeBtn = document.getElementById('pvClose');
+                    let panzoomInst = null;
+                    let lastTap = 0;
+                    let touchStartY = 0;
+                    let isDraggingDown = false;
+
+                    function showViewer(url, alt){
+                        overlay.classList.add('show');
+                        overlay.style.opacity = 0;
+                        requestAnimationFrame(()=> overlay.style.opacity = 1);
+                        spinner.style.display = 'flex';
+                        img.style.visibility = 'hidden';
+                        // load high-res image
+                        const loader = new Image();
+                        loader.crossOrigin = 'anonymous';
+                        loader.onload = function(){
+                            img.src = url;
+                            img.alt = alt || '';
+                            spinner.style.display = 'none';
+                            img.style.visibility = 'visible';
+                            // init panzoom
+                            if (panzoomInst) {
+                                panzoomInst.dispose();
+                                panzoomInst = null;
+                            }
+                            panzoomInst = Panzoom(img, { maxScale: 6, minScale: 1, contain: 'outside' });
+                            // enable wheel zoom (desktop)
+                            img.parentElement.addEventListener('wheel', panzoomInst.zoomWithWheel);
+                        };
+                        loader.onerror = function(){
+                            spinner.style.display = 'none';
+                            img.style.visibility = 'visible';
+                            img.src = "{{ url_for('static', filename='images/placeholder.svg') }}";
+                        };
+                        loader.src = url;
+                        // focus for keyboard
+                        overlay.focus();
+                    }
+
+                    function hideViewer(){
+                        overlay.style.opacity = 0;
+                        if (panzoomInst) {
+                            try { panzoomInst.dispose(); } catch(e){}
+                            panzoomInst = null;
+                        }
+                        // small delay to allow opacity transition
+                        setTimeout(()=>{
+                            overlay.classList.remove('show');
+                            img.src = '';
+                        }, 220);
+                    }
+
+                    // click thumbnails
+                    document.querySelectorAll('.product-image').forEach(function(el){
+                        el.style.cursor = 'zoom-in';
+                        el.addEventListener('click', function(e){
+                            e.preventDefault();
+                            const full = el.dataset.full || el.src;
+                            const alt = el.alt || '';
+                            showViewer(full, alt);
+                        });
+                    });
+
+                    // close interactions
+                    closeBtn.addEventListener('click', hideViewer);
+                    overlay.addEventListener('click', function(e){
+                        if (e.target === overlay) hideViewer();
+                    });
+                    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') hideViewer(); });
+
+                    // double-tap / double-click to zoom
+                    img.addEventListener('dblclick', function(e){
+                        if (!panzoomInst) return;
+                        const currentScale = panzoomInst.getScale();
+                        if (currentScale > 1) panzoomInst.reset();
+                        else panzoomInst.zoom(2, { animate: true, focal: { clientX: e.clientX, clientY: e.clientY } });
+                    });
+                    // touch double-tap
+                    overlay.addEventListener('touchend', function(e){
+                        const now = Date.now();
+                        if (now - lastTap < 300) {
+                            // double tap
+                            const touch = e.changedTouches[0];
+                            if (panzoomInst) {
+                                const s = panzoomInst.getScale();
+                                if (s > 1) panzoomInst.reset();
+                                else panzoomInst.zoom(2, { animate: true, focal: { clientX: touch.clientX, clientY: touch.clientY } });
+                            }
+                            lastTap = 0;
+                        } else {
+                            lastTap = now;
+                        }
+                    });
+
+                    // swipe down to close
+                    overlay.addEventListener('touchstart', function(e){
+                        if (e.touches && e.touches[0]) touchStartY = e.touches[0].clientY;
+                        isDraggingDown = false;
+                    }, { passive: true });
+                    overlay.addEventListener('touchmove', function(e){
+                        if (!e.touches || !e.touches[0]) return;
+                        const y = e.touches[0].clientY;
+                        const d = y - touchStartY;
+                        if (d > 20) {
+                            isDraggingDown = true;
+                            overlay.style.transform = `translateY(${d}px)`;
+                            overlay.style.opacity = Math.max(0.2, 1 - d / 400);
+                        }
+                    }, { passive: true });
+                    overlay.addEventListener('touchend', function(e){
+                        if (isDraggingDown) {
+                            const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
+                            const delta = endY - touchStartY;
+                            overlay.style.transform = '';
+                            overlay.style.opacity = '';
+                            if (delta > 120) hideViewer();
+                        }
+                    });
+
+                    // prevent overscroll when viewer open
+                    overlay.addEventListener('wheel', function(e){ if (overlay.classList.contains('show')) e.preventDefault(); }, { passive: false });
+                })();
+            </script>
 </body>
 </html>
