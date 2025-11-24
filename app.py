@@ -16,6 +16,11 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
+# Cloudinary
+import cloudinary
+from cloudinary import uploader
+# ensure cloudinary is configured via helper
+import cloudinary_config
 
 # project modules
 from models import db, Product
@@ -92,43 +97,9 @@ def index():
     # Get filter parameters
     search_query = request.args.get('search', '').strip()
     category_filter = request.args.get('category', 'all').strip()
-    min_price = request.args.get('min_price', '').strip()
-    max_price = request.args.get('max_price', '').strip()
     
-    # Start with base query
-    query = Product.query
-    
-    # Apply category filter
-    if category_filter and category_filter != 'all':
-        query = query.filter(Product.category == category_filter)
-    
-    # Apply search filter (search in name and description)
-    if search_query:
-        search_pattern = f'%{search_query}%'
-        query = query.filter(
-            db.or_(
-                Product.name.ilike(search_pattern),
-                Product.description.ilike(search_pattern)
-            )
-        )
-    
-    # Apply price filters
-    if min_price:
-        try:
-            min_price_val = float(min_price)
-            query = query.filter(Product.price >= min_price_val)
-        except ValueError:
-            pass
-    
-    if max_price:
-        try:
-            max_price_val = float(max_price)
-            query = query.filter(Product.price <= max_price_val)
-        except ValueError:
-            pass
-    
-    # Execute query
-    products = query.order_by(Product.id.desc()).all()
+    # Query products
+    products = Product.query.order_by(Product.id.desc()).all()
     items = []
     for p in products:
         # Handle both ImageKit URLs (full URLs) and local filenames
@@ -169,8 +140,6 @@ def index():
                          suggestions=suggestions,
                          search_query=search_query,
                          category_filter=category_filter,
-                         min_price=min_price,
-                         max_price=max_price,
                          category_names=category_names,
                          total_count=len(items))
 
@@ -203,34 +172,20 @@ def add_product():
         except ValueError:
             qty = 0
 
-        # Handle local image storage
+        # Handle image upload via Cloudinary (preferred)
         image_url = None
         image_file_id = None
-        
         if 'image' in request.files:
             f = request.files['image']
             if f and f.filename and allowed_file(f.filename):
                 try:
-                    # Save to local static/images folder
-                    filename = secure_filename(f.filename)
-                    # Add timestamp to avoid name conflicts
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    unique_filename = f"{timestamp}_{filename}"
-                    
-                    # Ensure the images directory exists
-                    images_dir = os.path.join(app.static_folder, 'images')
-                    os.makedirs(images_dir, exist_ok=True)
-                    
-                    # Save the file
-                    filepath = os.path.join(images_dir, unique_filename)
-                    f.save(filepath)
-                    
-                    # Store just the filename, not the full path
-                    image_url = unique_filename
-                    logger.info(f'Image saved locally: {unique_filename}')
-                    
+                    # Upload directly from file storage to Cloudinary
+                    res = uploader.upload(f, folder='plants_hub')
+                    image_url = res.get('secure_url')
+                    image_file_id = res.get('public_id')
+                    logger.info('Uploaded image to Cloudinary: %s (public_id=%s)', image_url, image_file_id)
                 except Exception as e:
-                    logger.error(f'Failed to save image locally: {e}')
+                    logger.exception('Cloudinary upload failed: %s', e)
                     flash('Image upload failed; product saved without image.', 'warning')
 
         try:
@@ -312,24 +267,18 @@ def edit_product(product_id):
                 f = request.files['image']
                 if f and f.filename and allowed_file(f.filename):
                     try:
-                        # Save to local static/images folder
-                        filename = secure_filename(f.filename)
-                        # Add timestamp to avoid name conflicts
-                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        unique_filename = f"{timestamp}_{filename}"
-                        
-                        # Ensure the images directory exists
-                        images_dir = os.path.join(app.static_folder, 'images')
-                        os.makedirs(images_dir, exist_ok=True)
-                        
-                        # Save the file
-                        filepath = os.path.join(images_dir, unique_filename)
-                        f.save(filepath)
-                        
-                        # Store just the filename, not the full path
-                        new_url = unique_filename
-                        new_id = None
-                        logger.info(f'Image updated locally: {unique_filename}')
+                        # Upload replacement image to Cloudinary
+                        res = uploader.upload(f, folder='plants_hub')
+                        new_url = res.get('secure_url')
+                        new_id = res.get('public_id')
+                        logger.info('Uploaded replacement image to Cloudinary: %s (public_id=%s)', new_url, new_id)
+                        # If previously stored in Cloudinary, attempt to delete old image
+                        if current_id:
+                            try:
+                                uploader.destroy(current_id)
+                                logger.info('Deleted previous Cloudinary image: %s', current_id)
+                            except Exception:
+                                logger.warning('Failed to delete previous Cloudinary image: %s', current_id)
                         
                     except Exception as e:
                         logger.error(f'Failed to save image locally: {e}')
@@ -426,29 +375,16 @@ def api_upload_image():
         return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXT)}'}), 400
     
     try:
-        logger.info('💾 Saving image locally...')
-        
-        # Add timestamp to avoid name conflicts
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        unique_filename = f"{timestamp}_{filename}"
-        
-        # Ensure the images directory exists
-        images_dir = os.path.join(app.static_folder, 'images')
-        os.makedirs(images_dir, exist_ok=True)
-        
-        # Save the file
-        filepath = os.path.join(images_dir, unique_filename)
-        f.save(filepath)
-        
-        logger.info('✅ Image saved locally: %s', unique_filename)
-        
-        # Return the local URL path
-        image_url = f'/static/images/{unique_filename}'
-        
+        logger.info('📤 Uploading image to Cloudinary...')
+        res = uploader.upload(f, folder='plants_hub')
+        image_url = res.get('secure_url')
+        public_id = res.get('public_id')
+        logger.info('✅ Uploaded to Cloudinary: %s (public_id=%s)', image_url, public_id)
+
         response = jsonify({
             'url': image_url,
-            'filename': unique_filename,
-            'file_id': None
+            'filename': os.path.basename(image_url) if image_url else None,
+            'file_id': public_id
         })
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 200
