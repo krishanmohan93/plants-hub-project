@@ -1,0 +1,66 @@
+/* Zoom modal styles - responsive and accessible */
+.zoom-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 180ms ease, background 200ms ease;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+.zoom-modal__overlay--visible { opacity: 1; }
+
+.zoom-modal__center {
+  max-width: 95vw;
+  max-height: 95vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.zoom-modal__img {
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  transition: transform 200ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease;
+}
+
+.zoom-modal__close {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 10001;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.zoom-modal__close:hover { background: rgba(0,0,0,0.6); transform: scale(1.06); }
+
+/* Product card example styles - small and reusable */
+.product-card { width: 220px; }
+.product-card__img-wrap { cursor: zoom-in; }
+.product-card__img { width: 100%; height: auto; display: block; border-radius: 6px; }
+
+/* Make sure everything is responsive on small devices */
+@media (max-width: 480px) {
+  .zoom-modal__close { right: 12px; top: 12px; width: 36px; height: 36px; font-size: 22px; }
+}
