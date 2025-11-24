@@ -463,8 +463,43 @@
     
     <!-- Image Preview Script -->
     <script>
+        // Cloudinary unsigned config passed from server
+        const CLOUDINARY_UNSIGNED = {
+            cloud_name: "{{ cloudinary_unsigned.cloud_name | default('') }}",
+            upload_preset: "{{ cloudinary_unsigned.upload_preset | default('') }}"
+        };
+
         let cameraStream = null;
         async function uploadViaAPI(file) {
+            // If Cloudinary unsigned config present, upload directly to Cloudinary
+            if (CLOUDINARY_UNSIGNED.cloud_name && CLOUDINARY_UNSIGNED.upload_preset) {
+                try {
+                    const cloudUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_UNSIGNED.cloud_name}/auto/upload`;
+                    const cform = new FormData();
+                    cform.append('file', file);
+                    cform.append('upload_preset', CLOUDINARY_UNSIGNED.upload_preset);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+                    const cres = await fetch(cloudUrl, { method: 'POST', body: cform, signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    const cdata = await cres.json();
+                    if (!cres.ok) throw new Error(cdata.error && cdata.error.message ? cdata.error.message : 'Cloudinary upload failed');
+                    // Cloudinary returns secure_url and public_id
+                    const dataUrl = cdata.secure_url || cdata.url;
+                    if (dataUrl) {
+                        document.getElementById('uploaded_image_url').value = dataUrl;
+                        document.getElementById('uploaded_image_id').value = cdata.public_id || '';
+                        return dataUrl;
+                    }
+                    throw new Error('No URL returned from Cloudinary');
+                } catch (err) {
+                    console.warn('Direct Cloudinary upload failed, falling back to server upload:', err.message || err);
+                    // fall through to server upload
+                }
+            }
+
             const form = new FormData();
             form.append('image', file);
             const btn = document.querySelector('#addProductForm button[type="submit"]');

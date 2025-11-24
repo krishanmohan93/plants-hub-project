@@ -526,9 +526,39 @@
     
     <!-- Image Upload + Preview (ImageKit) -->
     <script>
+        // Cloudinary unsigned config passed from server
+        const CLOUDINARY_UNSIGNED = {
+            cloud_name: "{{ cloudinary_unsigned.cloud_name | default('') }}",
+            upload_preset: "{{ cloudinary_unsigned.upload_preset | default('') }}"
+        };
+
         let cameraStream = null;
 
         async function uploadViaAPI(file) {
+            // Direct unsigned Cloudinary upload when configured
+            if (CLOUDINARY_UNSIGNED.cloud_name && CLOUDINARY_UNSIGNED.upload_preset) {
+                try {
+                    const cloudUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_UNSIGNED.cloud_name}/auto/upload`;
+                    const cform = new FormData();
+                    cform.append('file', file);
+                    cform.append('upload_preset', CLOUDINARY_UNSIGNED.upload_preset);
+
+                    const cres = await fetch(cloudUrl, { method: 'POST', body: cform });
+                    const cdata = await cres.json();
+                    if (!cres.ok) throw new Error(cdata.error && cdata.error.message ? cdata.error.message : 'Cloudinary upload failed');
+                    const dataUrl = cdata.secure_url || cdata.url;
+                    if (dataUrl) {
+                        document.getElementById('uploaded_image_url').value = dataUrl;
+                        document.getElementById('uploaded_image_id').value = cdata.public_id || '';
+                        return dataUrl;
+                    }
+                    throw new Error('No URL returned from Cloudinary');
+                } catch (err) {
+                    console.warn('Direct Cloudinary upload failed, falling back to server upload:', err.message || err);
+                    // fall through to server upload
+                }
+            }
+
             const form = new FormData();
             form.append('image', file);
             const btn = document.querySelector('#editProductForm button[type="submit"]');

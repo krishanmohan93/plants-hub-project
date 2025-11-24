@@ -263,7 +263,11 @@ def add_product():
         'colorful_pot': 'Colorful Pot',
         'other': 'Other'
     }
-    return render_template('add.html', category_names=category_names)
+    # Pass Cloudinary unsigned config (upload preset + cloud name) to template
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME', '')
+    upload_preset = os.getenv('CLOUDINARY_UPLOAD_PRESET', '')
+    return render_template('add.html', category_names=category_names,
+                           cloudinary_unsigned={'cloud_name': cloud_name, 'upload_preset': upload_preset})
 
 
 @app.route('/edit/<int:product_id>', methods=['GET', 'POST'])
@@ -387,7 +391,12 @@ def edit_product(product_id):
         'colorful_pot': 'Colorful Pot',
         'other': 'Other'
     }
-    return render_template('edit.html', product=product_dict, category_names=category_names)
+    # Pass Cloudinary unsigned config to the edit template as well
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME', '')
+    upload_preset = os.getenv('CLOUDINARY_UPLOAD_PRESET', '')
+    return render_template('edit.html', product=product_dict, category_names=category_names,
+                           cloudinary_unsigned={'cloud_name': cloud_name, 'upload_preset': upload_preset})
+    
 
 
 @app.route('/delete/<int:product_id>', methods=['POST'])
