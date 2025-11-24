@@ -711,12 +711,17 @@
                     border-radius: 8px;
                 }
                 .pv-img {
-                    max-width: 100%;
-                    max-height: 100%;
+                    width: auto;
+                    height: auto;
+                    max-width: calc(100vw - 40px);
+                    max-height: calc(100vh - 80px);
+                    object-fit: contain;
                     transform-origin: center center;
                     will-change: transform;
                     touch-action: none;
                     cursor: grab;
+                    display: block;
+                    margin: 0 auto;
                 }
                 .pv-close {
                     position: absolute;
@@ -784,20 +789,28 @@
                         // load high-res image
                         const loader = new Image();
                         loader.crossOrigin = 'anonymous';
-                        loader.onload = function(){
-                            img.src = url;
-                            img.alt = alt || '';
-                            spinner.style.display = 'none';
-                            img.style.visibility = 'visible';
-                            // init panzoom
-                            if (panzoomInst) {
-                                panzoomInst.dispose();
-                                panzoomInst = null;
-                            }
-                            panzoomInst = Panzoom(img, { maxScale: 6, minScale: 1, contain: 'outside' });
-                            // enable wheel zoom (desktop)
-                            img.parentElement.addEventListener('wheel', panzoomInst.zoomWithWheel);
-                        };
+                    loader.onload = function(){
+                        img.src = url;
+                        img.alt = alt || '';
+                        spinner.style.display = 'none';
+                        img.style.visibility = 'visible';
+                        // init panzoom: do NOT auto-zoom; pan only when zoomed
+                        if (panzoomInst) {
+                            try { panzoomInst.dispose(); } catch(e){}
+                            panzoomInst = null;
+                        }
+                        panzoomInst = Panzoom(img, {
+                            maxScale: 6,
+                            minScale: 1,
+                            step: 0.25,
+                            contain: 'inside',
+                            panOnlyWhenZoomed: true
+                        });
+                        // enable wheel zoom (desktop)
+                        img.parentElement.addEventListener('wheel', panzoomInst.zoomWithWheel);
+                        // ensure initial view is fully visible (reset transforms)
+                        panzoomInst.reset();
+                    };
                         loader.onerror = function(){
                             spinner.style.display = 'none';
                             img.style.visibility = 'visible';
@@ -870,6 +883,9 @@
                     }, { passive: true });
                     overlay.addEventListener('touchmove', function(e){
                         if (!e.touches || !e.touches[0]) return;
+                        // only allow swipe-down-to-close when not zoomed
+                        const scale = panzoomInst ? panzoomInst.getScale() : 1;
+                        if (scale > 1) return; // ignore swipe-to-close when zoomed
                         const y = e.touches[0].clientY;
                         const d = y - touchStartY;
                         if (d > 20) {
