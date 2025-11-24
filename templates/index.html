@@ -740,6 +740,32 @@
                     justify-content: center;
                     backdrop-filter: blur(4px);
                 }
+                .pv-zoom-btn {
+                    position: absolute;
+                    left: 50%;
+                    top: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 2015;
+                    width: 64px;
+                    height: 64px;
+                    border-radius: 999px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 2rem;
+                    color: #fff;
+                    background: rgba(0,0,0,0.35);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    opacity: 0;
+                    transition: opacity 160ms ease, transform 160ms ease;
+                    pointer-events: none;
+                }
+                .pv-inner:hover .pv-zoom-btn,
+                .pv-inner:focus-within .pv-zoom-btn {
+                    opacity: 1;
+                    pointer-events: auto;
+                }
+                .pv-zoom-btn:active { transform: translate(-50%, -50%) scale(0.96); }
                 .pv-spinner {
                     width: 64px;
                     height: 64px;
@@ -760,6 +786,7 @@
             <div id="pvOverlay" class="pv-overlay" tabindex="-1" aria-hidden="true">
                 <div class="pv-inner" role="dialog" aria-modal="true">
                     <button id="pvClose" class="pv-close" aria-label="Close viewer">&times;</button>
+                    <button id="pvZoomBtn" class="pv-zoom-btn" aria-label="Toggle zoom">+</button>
                     <div class="pv-img-wrap">
                         <img id="pvImage" class="pv-img" src="" alt="" />
                     </div>
@@ -775,6 +802,7 @@
                     const img = document.getElementById('pvImage');
                     const spinner = document.getElementById('pvSpinner');
                     const closeBtn = document.getElementById('pvClose');
+                    const zoomBtn = document.getElementById('pvZoomBtn');
                     let panzoomInst = null;
                     let lastTap = 0;
                     let touchStartY = 0;
@@ -806,10 +834,18 @@
                             contain: 'inside',
                             panOnlyWhenZoomed: true
                         });
-                        // enable wheel zoom (desktop)
-                        img.parentElement.addEventListener('wheel', panzoomInst.zoomWithWheel);
+                        // enable wheel zoom (desktop) with smooth update
+                        img.parentElement.addEventListener('wheel', function(e){
+                            if (!panzoomInst) return;
+                            panzoomInst.zoomWithWheel(e);
+                            // update icon shortly after wheel
+                            setTimeout(updateZoomBtn, 40);
+                        }, { passive: false });
                         // ensure initial view is fully visible (reset transforms)
                         panzoomInst.reset();
+                        // update zoom button state and briefly show on mobile
+                        updateZoomBtn();
+                        showZoomBtnBrief();
                     };
                         loader.onerror = function(){
                             spinner.style.display = 'none';
@@ -859,6 +895,8 @@
                         if (currentScale > 1) panzoomInst.reset();
                         else panzoomInst.zoom(2, { animate: true, focal: { clientX: e.clientX, clientY: e.clientY } });
                     });
+                    // update zoom button after double-click zoom
+                    img.addEventListener('transitionend', updateZoomBtn);
                     // touch double-tap
                     overlay.addEventListener('touchend', function(e){
                         const now = Date.now();
@@ -870,6 +908,7 @@
                                 if (s > 1) panzoomInst.reset();
                                 else panzoomInst.zoom(2, { animate: true, focal: { clientX: touch.clientX, clientY: touch.clientY } });
                             }
+                            setTimeout(updateZoomBtn, 60);
                             lastTap = 0;
                         } else {
                             lastTap = now;
@@ -903,6 +942,43 @@
                             if (delta > 120) hideViewer();
                         }
                     });
+
+                    // Zoom button behavior
+                    function updateZoomBtn(){
+                        try{
+                            const s = panzoomInst ? panzoomInst.getScale() : 1;
+                            if (!zoomBtn) return;
+                            zoomBtn.textContent = (s > 1.01) ? '−' : '+';
+                        }catch(e){/*ignore*/}
+                    }
+                    function showZoomBtnBrief(){
+                        if (!zoomBtn) return;
+                        zoomBtn.classList.add('show');
+                        setTimeout(()=> zoomBtn.classList.remove('show'), 1400);
+                    }
+                    if (zoomBtn){
+                        // toggle zoom on click
+                        zoomBtn.addEventListener('click', function(e){
+                            e.stopPropagation();
+                            if (!panzoomInst) return;
+                            const s = panzoomInst.getScale();
+                            const rect = img.getBoundingClientRect();
+                            const cx = rect.left + rect.width/2;
+                            const cy = rect.top + rect.height/2;
+                            if (s > 1.01) {
+                                panzoomInst.reset();
+                            } else {
+                                panzoomInst.zoom(2, { animate: true, focal: { clientX: cx, clientY: cy } });
+                            }
+                            setTimeout(updateZoomBtn, 60);
+                        });
+                        // show icon on pointer enter
+                        img.addEventListener('mouseenter', function(){ zoomBtn.classList.add('show'); });
+                        img.addEventListener('mouseleave', function(){ zoomBtn.classList.remove('show'); });
+                        // update icon on pointer interactions
+                        overlay.addEventListener('pointerup', function(){ setTimeout(updateZoomBtn, 50); });
+                        overlay.addEventListener('pointercancel', function(){ setTimeout(updateZoomBtn, 50); });
+                    }
 
                     // prevent overscroll when viewer open
                     overlay.addEventListener('wheel', function(e){ if (overlay.classList.contains('show')) e.preventDefault(); }, { passive: false });
