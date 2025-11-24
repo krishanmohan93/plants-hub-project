@@ -36,6 +36,9 @@ logger = logging.getLogger("plants_hub")
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret')
 
+# Allow uploads up to 16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 if DATABASE_URL.startswith('postgres://'):
@@ -196,10 +199,12 @@ def add_product():
         except ValueError:
             qty = 0
 
-        # Handle image upload: prefer Cloudinary, but fall back to local storage
-        image_url = None
-        image_file_id = None
-        if 'image' in request.files:
+        # First, check if client already uploaded image via the /upload API
+        image_url = request.form.get('uploaded_image_url') or None
+        image_file_id = request.form.get('uploaded_image_id') or None
+
+        # If no pre-uploaded URL, handle image upload: prefer Cloudinary, but fall back to local storage
+        if not image_url and 'image' in request.files:
             f = request.files['image']
             if f and f.filename and allowed_file(f.filename):
                 # If Cloudinary is configured, try to upload there first

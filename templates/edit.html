@@ -314,18 +314,15 @@
                                     <i class="bi bi-image"></i> Current Image
                                 </label>
                                 <div class="preview-container" id="currentImageContainer">
-                                    {% if product.Image_File.startswith('http') %}
-                                    <!-- Cloudinary URL -->
-                                    <img src="{{ product.Image_File }}" 
-                                         class="current-image" 
-                                         alt="{{ product.Product_Name }}"
-                                         onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                                    {% set img = product.Image_File or '' %}
+                                    {% if img.startswith('http') %}
+                                        <img src="{{ img }}" class="current-image" alt="{{ product.Product_Name }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                                    {% elif img.startswith('/') %}
+                                        <!-- Absolute/relative path (e.g., /static/images/xxx) -->
+                                        <img src="{{ img }}" class="current-image" alt="{{ product.Product_Name }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
                                     {% else %}
-                                    <!-- Local file -->
-                                    <img src="{{ url_for('static', filename='images/' + product.Image_File) }}" 
-                                         class="current-image" 
-                                         alt="{{ product.Product_Name }}"
-                                         onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
+                                        <!-- Bare filename stored in DB -->
+                                        <img src="{{ url_for('static', filename='images/' + img) }}" class="current-image" alt="{{ product.Product_Name }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.svg') }}'">
                                     {% endif %}
                                 </div>
                                 <div class="form-check mt-2">
