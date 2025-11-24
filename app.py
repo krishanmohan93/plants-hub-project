@@ -58,6 +58,30 @@ def allowed_file(filename: str) -> bool:
     return ext in ALLOWED_EXT
 
 
+def cloudinary_available() -> bool:
+    try:
+        return bool(cloudinary.config().cloud_name)
+    except Exception:
+        return False
+
+
+def save_file_locally(file_obj, folder='static/images') -> str:
+    """Save uploaded file to `static/images` and return the URL path."""
+    try:
+        os.makedirs(folder, exist_ok=True)
+        filename = secure_filename(file_obj.filename)
+        # add timestamp to avoid collisions
+        name, ext = os.path.splitext(filename)
+        ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+        filename = f"{name}_{ts}{ext}"
+        path = os.path.join(folder, filename)
+        file_obj.save(path)
+        return f"/static/images/{filename}"
+    except Exception as e:
+        logger.exception('Failed to save file locally: %s', e)
+        return None
+
+
 def run_db_migrations_if_needed():
     """Idempotent, safe migration to add image_file_id if it's missing."""
     try:
@@ -172,21 +196,37 @@ def add_product():
         except ValueError:
             qty = 0
 
-        # Handle image upload via Cloudinary (preferred)
+        # Handle image upload: prefer Cloudinary, but fall back to local storage
         image_url = None
         image_file_id = None
         if 'image' in request.files:
             f = request.files['image']
             if f and f.filename and allowed_file(f.filename):
-                try:
-                    # Upload directly from file storage to Cloudinary
-                    res = uploader.upload(f, folder='plants_hub')
-                    image_url = res.get('secure_url')
-                    image_file_id = res.get('public_id')
-                    logger.info('Uploaded image to Cloudinary: %s (public_id=%s)', image_url, image_file_id)
-                except Exception as e:
-                    logger.exception('Cloudinary upload failed: %s', e)
-                    flash('Image upload failed; product saved without image.', 'warning')
+                # If Cloudinary is configured, try to upload there first
+                if cloudinary_available():
+                    try:
+                        res = uploader.upload(f, folder='plants_hub')
+                        image_url = res.get('secure_url')
+                        image_file_id = res.get('public_id')
+                        logger.info('Uploaded image to Cloudinary: %s (public_id=%s)', image_url, image_file_id)
+                    except Exception as e:
+                        logger.exception('Cloudinary upload failed: %s', e)
+                        # fallback to local save
+                        try:
+                            image_url = save_file_locally(f)
+                            image_file_id = None
+                            logger.info('Saved image locally as fallback: %s', image_url)
+                            flash('Cloud upload failed; saved image locally.', 'warning')
+                        except Exception:
+                            flash('Image upload failed; product saved without image.', 'warning')
+                else:
+                    # Cloudinary not configured — save locally
+                    image_url = save_file_locally(f)
+                    image_file_id = None
+                    if image_url:
+                        logger.info('Saved uploaded image locally: %s', image_url)
+                    else:
+                        flash('Failed to save image locally.', 'warning')
 
         try:
             p = Product(
@@ -266,23 +306,39 @@ def edit_product(product_id):
             elif 'image' in request.files:
                 f = request.files['image']
                 if f and f.filename and allowed_file(f.filename):
-                    try:
-                        # Upload replacement image to Cloudinary
-                        res = uploader.upload(f, folder='plants_hub')
-                        new_url = res.get('secure_url')
-                        new_id = res.get('public_id')
-                        logger.info('Uploaded replacement image to Cloudinary: %s (public_id=%s)', new_url, new_id)
-                        # If previously stored in Cloudinary, attempt to delete old image
-                        if current_id:
-                            try:
-                                uploader.destroy(current_id)
-                                logger.info('Deleted previous Cloudinary image: %s', current_id)
-                            except Exception:
-                                logger.warning('Failed to delete previous Cloudinary image: %s', current_id)
-                        
-                    except Exception as e:
-                        logger.error(f'Failed to save image locally: {e}')
-                        flash('Image upload failed. Image unchanged.', 'danger')
+                    # Prefer Cloudinary if available
+                    if cloudinary_available():
+                        try:
+                            res = uploader.upload(f, folder='plants_hub')
+                            new_url = res.get('secure_url')
+                            new_id = res.get('public_id')
+                            logger.info('Uploaded replacement image to Cloudinary: %s (public_id=%s)', new_url, new_id)
+                            # If previously stored in Cloudinary, attempt to delete old image
+                            if current_id:
+                                try:
+                                    uploader.destroy(current_id)
+                                    logger.info('Deleted previous Cloudinary image: %s', current_id)
+                                except Exception:
+                                    logger.warning('Failed to delete previous Cloudinary image: %s', current_id)
+                        except Exception as e:
+                            logger.exception('Cloudinary replacement upload failed: %s', e)
+                            # fallback to local save
+                            local_url = save_file_locally(f)
+                            if local_url:
+                                new_url = local_url
+                                new_id = None
+                                logger.info('Saved replacement image locally as fallback: %s', new_url)
+                                flash('Cloud upload failed; saved replacement locally.', 'warning')
+                            else:
+                                flash('Image upload failed. Image unchanged.', 'danger')
+                    else:
+                        # Cloudinary not configured — save locally
+                        local_url = save_file_locally(f)
+                        if local_url:
+                            new_url = local_url
+                            new_id = None
+                        else:
+                            flash('Failed to save replacement image locally.', 'danger')
                 elif f and f.filename:
                     flash('Invalid file type! Please upload PNG, JPG, JPEG, or GIF.', 'danger')
                     return redirect(url_for('edit_product', product_id=product_id))
@@ -375,11 +431,21 @@ def api_upload_image():
         return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXT)}'}), 400
     
     try:
-        logger.info('📤 Uploading image to Cloudinary...')
-        res = uploader.upload(f, folder='plants_hub')
-        image_url = res.get('secure_url')
-        public_id = res.get('public_id')
-        logger.info('✅ Uploaded to Cloudinary: %s (public_id=%s)', image_url, public_id)
+        # Prefer Cloudinary if configured
+        if cloudinary_available():
+            logger.info('📤 Uploading image to Cloudinary...')
+            res = uploader.upload(f, folder='plants_hub')
+            image_url = res.get('secure_url')
+            public_id = res.get('public_id')
+            logger.info('✅ Uploaded to Cloudinary: %s (public_id=%s)', image_url, public_id)
+        else:
+            # Save locally and return local URL
+            logger.info('Cloudinary not configured — saving upload locally')
+            image_url = save_file_locally(f)
+            public_id = None
+
+        if not image_url:
+            raise RuntimeError('No image URL returned from upload or local save')
 
         response = jsonify({
             'url': image_url,
@@ -388,9 +454,9 @@ def api_upload_image():
         })
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 200
-        
+
     except Exception as e:
-        logger.error('❌ Failed to save image: %s', e)
+        logger.exception('❌ Failed to save image: %s', e)
         return jsonify({
             'error': f'Failed to save image: {str(e)}',
             'type': 'SaveError'
