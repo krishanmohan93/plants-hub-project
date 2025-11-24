@@ -15,5 +15,5 @@ python-dotenv==1.0.0
 # Database ORM
 SQLAlchemy==2.0.44
  
-# Cloudinary SDK
-cloudinary==2.9.0
+# Cloudinary SDK (pinned to the latest available release on PyPI)
+cloudinary==1.44.1
