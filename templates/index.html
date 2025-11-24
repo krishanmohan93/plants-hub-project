@@ -798,76 +798,183 @@
 
             <script>
                 (function(){
-                    const overlay = document.getElementById('pvOverlay');
-                    const img = document.getElementById('pvImage');
-                    const spinner = document.getElementById('pvSpinner');
-                    const closeBtn = document.getElementById('pvClose');
-                    const zoomBtn = document.getElementById('pvZoomBtn');
-                    let panzoomInst = null;
-                    let lastTap = 0;
-                    let touchStartY = 0;
-                    let isDraggingDown = false;
+                    function initViewer(){
+                        const overlay = document.getElementById('pvOverlay');
+                        const img = document.getElementById('pvImage');
+                        const spinner = document.getElementById('pvSpinner');
+                        const closeBtn = document.getElementById('pvClose');
+                        const zoomBtn = document.getElementById('pvZoomBtn');
+                        let panzoomInst = null;
+                        let lastTap = 0;
+                        let touchStartY = 0;
+                        let isDraggingDown = false;
 
-                    function showViewer(url, alt){
-                        overlay.classList.add('show');
-                        overlay.style.opacity = 0;
-                        requestAnimationFrame(()=> overlay.style.opacity = 1);
+                        function showViewer(url, alt, thumbRect){
+                        // Create a clipped animated clone for shared-element transition
+                        const anim = document.createElement('img');
+                        anim.className = 'pv-anim';
+                        anim.src = url;
+                        anim.alt = alt || '';
+                        anim.style.position = 'fixed';
+                        anim.style.left = (thumbRect ? thumbRect.left : window.innerWidth/2 - 40) + 'px';
+                        anim.style.top = (thumbRect ? thumbRect.top : window.innerHeight/2 - 40) + 'px';
+                        anim.style.width = (thumbRect ? thumbRect.width : 80) + 'px';
+                        anim.style.height = (thumbRect ? thumbRect.height : 80) + 'px';
+                        anim.style.objectFit = 'cover';
+                        anim.style.borderRadius = '6px';
+                        anim.style.zIndex = 3000;
+                        anim.style.boxShadow = '0 12px 40px rgba(0,0,0,0.5)';
+                        anim.style.transition = 'transform 320ms cubic-bezier(.2,.8,.2,1), left 320ms, top 320ms, width 320ms, height 320ms, opacity 220ms';
+                        document.body.appendChild(anim);
+
+                        // lock body scroll
+                        const prevOverflow = document.body.style.overflow;
+                        document.body.style.overflow = 'hidden';
+
+                        // compute target size keeping image within viewport
+                        function computeTargetRect(imgW,imgH){
+                            const maxW = Math.min(window.innerWidth - 40, imgW || window.innerWidth);
+                            const maxH = Math.min(window.innerHeight - 80, imgH || window.innerHeight);
+                            const ratio = Math.min(maxW/(imgW||maxW), maxH/(imgH||maxH), 1);
+                            const tw = (imgW||maxW) * ratio;
+                            const th = (imgH||maxH) * ratio;
+                            return {
+                                left: (window.innerWidth - tw)/2,
+                                top: (window.innerHeight - th)/2,
+                                width: tw,
+                                height: th
+                            };
+                        }
+
                         spinner.style.display = 'flex';
                         img.style.visibility = 'hidden';
-                        // load high-res image
-                        const loader = new Image();
-                        loader.crossOrigin = 'anonymous';
-                    loader.onload = function(){
-                        img.src = url;
-                        img.alt = alt || '';
-                        spinner.style.display = 'none';
-                        img.style.visibility = 'visible';
-                        // init panzoom: do NOT auto-zoom; pan only when zoomed
-                        if (panzoomInst) {
-                            try { panzoomInst.dispose(); } catch(e){}
-                            panzoomInst = null;
-                        }
-                        panzoomInst = Panzoom(img, {
-                            maxScale: 6,
-                            minScale: 1,
-                            step: 0.25,
-                            contain: 'inside',
-                            panOnlyWhenZoomed: true
-                        });
-                        // enable wheel zoom (desktop) with smooth update
-                        img.parentElement.addEventListener('wheel', function(e){
-                            if (!panzoomInst) return;
-                            panzoomInst.zoomWithWheel(e);
-                            // update icon shortly after wheel
-                            setTimeout(updateZoomBtn, 40);
-                        }, { passive: false });
-                        // ensure initial view is fully visible (reset transforms)
-                        panzoomInst.reset();
-                        // update zoom button state and briefly show on mobile
-                        updateZoomBtn();
-                        showZoomBtnBrief();
-                    };
-                        loader.onerror = function(){
-                            spinner.style.display = 'none';
-                            img.style.visibility = 'visible';
-                            img.src = "{{ url_for('static', filename='images/placeholder.svg') }}";
+
+                        // Wait until anim image loads to measure natural size
+                        anim.onload = function(){
+                            const naturalW = anim.naturalWidth || anim.width;
+                            const naturalH = anim.naturalHeight || anim.height;
+                            const target = computeTargetRect(naturalW, naturalH);
+
+                            // trigger transition to center/scale
+                            requestAnimationFrame(()=>{
+                                anim.style.left = target.left + 'px';
+                                anim.style.top = target.top + 'px';
+                                anim.style.width = target.width + 'px';
+                                anim.style.height = target.height + 'px';
+                                anim.style.opacity = '1';
+                            });
+
+                            // after animation completes, show overlay and initialize panzoom
+                            const onAnimEnd = function(){
+                                anim.removeEventListener('transitionend', onAnimEnd);
+                                // show overlay beneath anim for a seamless swap
+                                overlay.classList.add('show');
+                                overlay.style.opacity = 1;
+                                spinner.style.display = 'none';
+                                img.src = url;
+                                img.alt = alt || '';
+                                img.style.visibility = 'visible';
+
+                                // initialize panzoom
+                                try { if (panzoomInst) { panzoomInst.dispose(); panzoomInst = null; } } catch(e){}
+                                try{
+                                    panzoomInst = Panzoom(img, {
+                                        maxScale: 6,
+                                        minScale: 1,
+                                        step: 0.25,
+                                        contain: 'inside',
+                                        panOnlyWhenZoomed: true,
+                                        animate: true
+                                    });
+                                }catch(e){ console.warn('Panzoom init failed', e); panzoomInst = null; }
+
+                                // attach wheel listener to parent
+                                try{
+                                    img.parentElement.addEventListener('wheel', function(e){ if (!panzoomInst) return; panzoomInst.zoomWithWheel(e); setTimeout(updateZoomBtn,40); }, { passive: false });
+                                }catch(e){}
+
+                                panzoomInst && panzoomInst.reset && panzoomInst.reset();
+                                updateZoomBtn();
+                                showZoomBtnBrief();
+
+                                // remove animated clone
+                                document.body.removeChild(anim);
+                                // store previous overflow on overlay for restore on hide
+                                overlay._prevOverflow = prevOverflow;
+                                overlay.focus();
+                            };
+                            anim.addEventListener('transitionend', onAnimEnd);
                         };
-                        loader.src = url;
-                        // focus for keyboard
-                        overlay.focus();
+
+                        anim.onerror = function(){
+                            // fallback: show overlay immediately
+                            spinner.style.display = 'none';
+                            img.src = url;
+                            img.alt = alt || '';
+                            img.style.visibility = 'visible';
+                            overlay.classList.add('show');
+                            overlay.style.opacity = 1;
+                            overlay._prevOverflow = prevOverflow;
+                            try { panzoomInst && panzoomInst.dispose(); } catch(e){}
+                            try{ panzoomInst = Panzoom(img, { maxScale:6, minScale:1, contain:'inside', panOnlyWhenZoomed:true }); }catch(e){}
+                        };
+                        // kick off load
+                        anim.src = url;
                     }
 
                     function hideViewer(){
+                        // Create reverse animated clone from current image rect to thumbnail (if available)
+                        const currentRect = img.getBoundingClientRect();
+                        const anim = document.createElement('img');
+                        anim.className = 'pv-anim';
+                        anim.src = img.src;
+                        anim.alt = img.alt || '';
+                        anim.style.position = 'fixed';
+                        anim.style.left = currentRect.left + 'px';
+                        anim.style.top = currentRect.top + 'px';
+                        anim.style.width = currentRect.width + 'px';
+                        anim.style.height = currentRect.height + 'px';
+                        anim.style.objectFit = 'contain';
+                        anim.style.borderRadius = '6px';
+                        anim.style.zIndex = 3000;
+                        anim.style.boxShadow = '0 12px 40px rgba(0,0,0,0.5)';
+                        anim.style.transition = 'transform 260ms cubic-bezier(.2,.8,.2,1), left 260ms, top 260ms, width 260ms, height 260ms, opacity 200ms';
+                        document.body.appendChild(anim);
+
+                        // dispose panzoom
+                        if (panzoomInst) { try { panzoomInst.dispose(); } catch(e){} panzoomInst = null; }
+
+                        // Hide overlay content immediately (to reveal anim)
                         overlay.style.opacity = 0;
-                        if (panzoomInst) {
-                            try { panzoomInst.dispose(); } catch(e){}
-                            panzoomInst = null;
+                        setTimeout(()=> overlay.classList.remove('show'), 260);
+
+                        // If we have a thumbnail to animate back to, find it by matching src
+                        const thumbs = Array.from(document.querySelectorAll('.product-image'));
+                        const targetThumb = thumbs.find(t => (t.dataset.full || t.src) === img.src) || null;
+                        if (targetThumb) {
+                            const tr = targetThumb.getBoundingClientRect();
+                            requestAnimationFrame(()=>{
+                                anim.style.left = tr.left + 'px';
+                                anim.style.top = tr.top + 'px';
+                                anim.style.width = tr.width + 'px';
+                                anim.style.height = tr.height + 'px';
+                                anim.style.opacity = '0.0';
+                            });
+                        } else {
+                            // fade out and scale down to center
+                            requestAnimationFrame(()=>{
+                                anim.style.opacity = '0';
+                                anim.style.transform = 'scale(0.96) translateY(12px)';
+                            });
                         }
-                        // small delay to allow opacity transition
+
+                        // restore body overflow after animation
                         setTimeout(()=>{
-                            overlay.classList.remove('show');
+                            try{ document.body.removeChild(anim); }catch(e){}
+                            const prev = overlay._prevOverflow || '';
+                            document.body.style.overflow = prev;
                             img.src = '';
-                        }, 220);
+                        }, 320);
                     }
 
                     // click thumbnails
@@ -980,8 +1087,20 @@
                         overlay.addEventListener('pointercancel', function(){ setTimeout(updateZoomBtn, 50); });
                     }
 
-                    // prevent overscroll when viewer open
-                    overlay.addEventListener('wheel', function(e){ if (overlay.classList.contains('show')) e.preventDefault(); }, { passive: false });
+                        // prevent overscroll when viewer open
+                        overlay.addEventListener('wheel', function(e){ if (overlay.classList.contains('show')) e.preventDefault(); }, { passive: false });
+                    }
+
+                    // Ensure Panzoom is available — dynamically load fallback if needed
+                    if (typeof Panzoom === 'undefined'){
+                        const s = document.createElement('script');
+                        s.src = 'https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js';
+                        s.onload = function(){ initViewer(); };
+                        s.onerror = function(){ console.warn('Panzoom failed to load; image viewer will still open without pan/zoom.'); initViewer(); };
+                        document.head.appendChild(s);
+                    } else {
+                        initViewer();
+                    }
                 })();
             </script>
 </body>

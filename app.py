@@ -15,7 +15,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
-from sqlalchemy import text
+from sqlalchemy import text, or_
 # Cloudinary
 import cloudinary
 from cloudinary import uploader
@@ -124,9 +124,28 @@ def index():
     # Get filter parameters
     search_query = request.args.get('search', '').strip()
     category_filter = request.args.get('category', 'all').strip()
-    
-    # Query products
-    products = Product.query.order_by(Product.id.desc()).all()
+    min_price = request.args.get('min_price', '').strip()
+    max_price = request.args.get('max_price', '').strip()
+
+    # Build query with filters (server-side filtering)
+    query = Product.query
+    if search_query:
+        q = f"%{search_query}%"
+        query = query.filter(or_(Product.name.ilike(q), Product.description.ilike(q)))
+    if category_filter and category_filter != 'all':
+        query = query.filter(Product.category == category_filter)
+    try:
+        if min_price:
+            query = query.filter(Product.price >= float(min_price))
+    except Exception:
+        pass
+    try:
+        if max_price:
+            query = query.filter(Product.price <= float(max_price))
+    except Exception:
+        pass
+
+    products = query.order_by(Product.id.desc()).all()
     items = []
     for p in products:
         # Handle both ImageKit URLs (full URLs) and local filenames
@@ -146,8 +165,11 @@ def index():
             'index': p.id,
         })
     
-    # Get product name suggestions for search autocomplete
-    suggestions = [p.name for p in products]
+    # Get product name suggestions for search autocomplete (use all products for suggestions)
+    try:
+        suggestions = [p.name for p in Product.query.order_by(Product.id.desc()).all()]
+    except Exception:
+        suggestions = [p.name for p in products]
     
     # Category names for display
     category_names = {
@@ -167,6 +189,8 @@ def index():
                          suggestions=suggestions,
                          search_query=search_query,
                          category_filter=category_filter,
+                         min_price=min_price,
+                         max_price=max_price,
                          category_names=category_names,
                          total_count=len(items))
 
